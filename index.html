@@ -1,0 +1,1055 @@
+<meta charset="utf-8">
+<title>CCTS Carbon Market Simulator</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --surface-2: #ffffff;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --accent: #c15a1e;
+    --accent-ink: #ffffff;
+    --price: #2a78d6;
+    --good: #0ca30c;
+    --warning: #b8790a;
+    --serious: #c1552f;
+    --critical: #d03b3b;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    --display: "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --surface-2: #20201f;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #96938a;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255,255,255,0.12);
+      --accent: #e88a4c;
+      --accent-ink: #1a1005;
+      --price: #3987e5;
+      --good: #2fc22f;
+      --warning: #fab219;
+      --serious: #ec835a;
+      --critical: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #20201f;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #96938a;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.12);
+    --accent: #e88a4c;
+    --accent-ink: #1a1005;
+    --price: #3987e5;
+    --good: #2fc22f;
+    --warning: #fab219;
+    --serious: #ec835a;
+    --critical: #e66767;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --surface-2: #ffffff;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --accent: #c15a1e;
+    --accent-ink: #ffffff;
+    --price: #2a78d6;
+    --good: #0ca30c;
+    --warning: #b8790a;
+    --serious: #c1552f;
+    --critical: #d03b3b;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  #app { min-height: 100vh; display: flex; flex-direction: column; }
+
+  .ticker {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 0.6rem 1.25rem;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-2);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .ticker b { color: var(--ink); font-weight: 700; }
+  .ticker .tk-label { text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-size: 10.5px; margin-right: 0.35rem; }
+  .ticker .tk-price { color: var(--price); font-weight: 700; }
+  .ticker .tk-sep { color: var(--grid); }
+
+  main { flex: 1; padding: 1.75rem 1.25rem 3rem; display: flex; justify-content: center; }
+  .wrap { width: 100%; max-width: 1100px; }
+  .wrap-narrow { width: 100%; max-width: 720px; }
+
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0 0 0.4rem; letter-spacing: 0.01em; }
+  h1 { font-size: 2.2rem; }
+  h2 { font-size: 1.4rem; }
+  h3 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); }
+  p { margin: 0 0 0.9rem; color: var(--ink-2); }
+  .eyebrow { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 0.5rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.4rem;
+  }
+  .stack { display: flex; flex-direction: column; gap: 1rem; }
+  .row { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .grid-2 { display: grid; grid-template-columns: 300px 1fr; gap: 1.25rem; align-items: start; }
+  @media (max-width: 760px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .btn {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 0.65rem 1.2rem;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    background: var(--accent);
+    color: var(--accent-ink);
+    transition: filter 0.12s ease, transform 0.06s ease;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-visible { outline: 2px solid var(--price); outline-offset: 2px; }
+  .btn[disabled] { opacity: 0.4; cursor: not-allowed; filter: none; }
+  .btn-ghost { background: transparent; color: var(--ink); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--surface-2); }
+  .btn-sm { padding: 0.4rem 0.75rem; font-size: 12.5px; }
+
+  .sector-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0.75rem; }
+  .sector-tile {
+    text-align: left;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 0.9rem 1rem;
+    cursor: pointer;
+    font-family: var(--sans);
+    color: var(--ink);
+  }
+  .sector-tile:hover { border-color: var(--accent); }
+  .sector-tile.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .sector-tile .st-name { font-weight: 700; font-family: var(--display); font-size: 1.05rem; }
+  .sector-tile .st-meta { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 0.3rem; }
+
+  .archetype-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+  @media (max-width: 640px) { .archetype-grid { grid-template-columns: 1fr; } }
+  .arche-tile {
+    text-align: left;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 0.9rem 1rem;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .arche-tile:hover { border-color: var(--accent); }
+  .arche-tile.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .arche-tile .at-name { font-weight: 700; font-family: var(--display); }
+  .arche-tile .at-desc { font-size: 12.5px; color: var(--ink-2); margin-top: 0.25rem; }
+
+  .kpi { display: flex; flex-direction: column; gap: 0.15rem; }
+  .kpi .kv { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 1.5rem; font-weight: 700; }
+  .kpi .kl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .kpi-row { display: flex; gap: 1.75rem; flex-wrap: wrap; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 0.25rem 0.6rem; border-radius: 999px;
+    font-family: var(--sans);
+  }
+  .pill-good { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+  .pill-warn { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning); }
+  .pill-bad { background: color-mix(in srgb, var(--critical) 16%, transparent); color: var(--critical); }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .measure-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.55rem 0.7rem; border-radius: 7px; gap: 0.75rem;
+    border: 1px solid var(--border);
+  }
+  .measure-row.active { border-color: var(--good); background: color-mix(in srgb, var(--good) 8%, var(--surface)); }
+  .measure-row .m-name { font-weight: 600; font-size: 13.5px; }
+  .measure-row .m-meta { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  input[type="number"] {
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--ink); padding: 0.45rem 0.6rem; width: 100%; font-size: 14px;
+  }
+  label.field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--grid); }
+  th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  tr.you td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .table-wrap { overflow-x: auto; }
+
+  .divider { height: 1px; background: var(--grid); border: none; margin: 0.25rem 0; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .foot-note { font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--grid); padding-top: 0.75rem; margin-top: 0.5rem; }
+
+  .steps { display: flex; gap: 0.4rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .step {
+    font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 0.3rem 0.6rem; border-radius: 5px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border);
+  }
+  .step.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+  .step.done { color: var(--good); border-color: var(--good); background: transparent; }
+
+  svg text { font-family: var(--mono); fill: var(--ink-2); }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.2rem; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div id="app"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- data ---------- */
+
+  var SECTORS = [
+    { id: "aluminium", name: "Aluminium", unit: "tonne primary Al", baseline: 13.5, fy26: 1.9, fy27: 7.06, margin: 2400, outMin: 40000, outMax: 90000 },
+    { id: "steel", name: "Iron & Steel", unit: "tonne crude steel", baseline: 2.3, fy26: 2.5, fy27: 6.0, margin: 1800, outMin: 150000, outMax: 400000 },
+    { id: "cement", name: "Cement", unit: "tonne cement", baseline: 0.68, fy26: 0.85, fy27: 7.6, margin: 900, outMin: 200000, outMax: 600000 },
+    { id: "chloralkali", name: "Chlor-Alkali", unit: "tonne caustic soda", baseline: 1.8, fy26: 1.32, fy27: 4.53, margin: 1500, outMin: 60000, outMax: 150000 },
+    { id: "pulp", name: "Pulp & Paper", unit: "tonne paper", baseline: 1.2, fy26: 7.0, fy27: 15.0, margin: 1100, outMin: 80000, outMax: 200000 },
+    { id: "fertilizer", name: "Fertilizer", unit: "tonne urea", baseline: 1.8, fy26: 2.0, fy27: 4.5, margin: 1300, outMin: 250000, outMax: 500000 },
+    { id: "refining", name: "Petroleum Refining", unit: "tonne throughput", baseline: 0.28, fy26: 2.2, fy27: 5.0, margin: 2000, outMin: 1000000, outMax: 3000000 },
+    { id: "petrochem", name: "Petrochemicals", unit: "tonne product", baseline: 1.0, fy26: 2.8, fy27: 5.5, margin: 1700, outMin: 100000, outMax: 250000 },
+    { id: "textiles", name: "Textiles", unit: "tonne fabric", baseline: 0.15, fy26: 2.0, fy27: 3.5, margin: 600, outMin: 50000, outMax: 120000 }
+  ];
+
+  var DISCLOSED_SECTORS = { aluminium: 1, cement: 1, chloralkali: 1, pulp: 1 };
+
+  var ARCHETYPES = [
+    { id: "efficient", name: "Efficient Incumbent", desc: "Already lean. Low starting intensity, but the cheap fixes are gone — further cuts cost more.", baselineMult: 0.85, costMult: 1.4, potentialMult: 0.7 },
+    { id: "midpack", name: "Mid-Pack Operator", desc: "Sector-average intensity and a balanced abatement cost curve.", baselineMult: 1.0, costMult: 1.0, potentialMult: 1.0 },
+    { id: "laggard", name: "Legacy Laggard", desc: "High starting intensity, but plenty of cheap headroom — early cuts are inexpensive.", baselineMult: 1.2, costMult: 0.7, potentialMult: 1.4 }
+  ];
+
+  var BOT_STRATEGIES = ["complier", "banker", "frontloader", "laggard_payer"];
+  var BOT_STRATEGY_LABEL = { complier: "Cost-Minimizing Complier", banker: "Banker / Speculator", frontloader: "Aggressive Early-Abater", laggard_payer: "Laggard Penalty-Payer" };
+
+  var MEASURE_COST_TIERS = [400, 1200, 2800, 5500];
+  var MEASURE_FRACTION_TIERS = [0.02, 0.035, 0.05, 0.07];
+  var PRICE_FLOOR = 500;
+  var PRICE_CEIL = 6000;
+
+  var money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
+  var moneyInt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+  var num2 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
+
+  function cr(v) { return "₹" + money.format(v / 1e7) + " Cr"; }
+  function rupee(v) { return "₹" + moneyInt.format(Math.round(v)); }
+  function pct(v) { return num2.format(v) + "%"; }
+  function rnd(min, max) { return min + Math.random() * (max - min); }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  /* ---------- entity generation ---------- */
+
+  function makeMeasures(ownBaseline, archetype) {
+    var measures = [];
+    for (var i = 0; i < 4; i++) {
+      var fraction = MEASURE_FRACTION_TIERS[i] * archetype.potentialMult * rnd(0.9, 1.1);
+      var costPerT = MEASURE_COST_TIERS[i] * archetype.costMult * rnd(0.9, 1.1);
+      var reductionPerUnit = fraction * ownBaseline;
+      measures.push({
+        label: ["Efficiency Retrofit", "Fuel/Process Switch", "Advanced Capture", "Deep Process Redesign"][i],
+        costPerTonne: costPerT,
+        reductionPerUnit: reductionPerUnit
+      });
+    }
+    return measures;
+  }
+
+  function generateCompany(sector, archetype, isPlayer, strategy) {
+    var ownBaseline = sector.baseline * archetype.baselineMult * rnd(0.95, 1.05);
+    var output = Math.round(rnd(sector.outMin, sector.outMax));
+    return {
+      id: sector.id,
+      sectorId: sector.id,
+      sectorName: sector.name,
+      unit: sector.unit,
+      name: (isPlayer ? "Your " : "") + sector.name + " Works",
+      isPlayer: !!isPlayer,
+      archetypeId: archetype.id,
+      archetypeName: archetype.name,
+      strategy: strategy || null,
+      baselineIntensity: ownBaseline,
+      output: output,
+      margin: sector.margin,
+      measures: makeMeasures(ownBaseline, archetype),
+      activatedCount: 0,
+      bank: 0,
+      totalProfit: 0,
+      history: []
+    };
+  }
+
+  function targetIntensity(company, sector, year) {
+    var reductionPct = year === 1 ? sector.fy26 : sector.fy27;
+    return company.baselineIntensity * (1 - reductionPct / 100);
+  }
+
+  function cumulativeReduction(company, count) {
+    var r = 0;
+    for (var i = 0; i < count; i++) r += company.measures[i].reductionPerUnit;
+    return r;
+  }
+
+  function newMeasuresCost(company, fromCount, toCount) {
+    var cost = 0;
+    for (var i = fromCount; i < toCount; i++) {
+      cost += company.measures[i].costPerTonne * company.measures[i].reductionPerUnit * company.output;
+    }
+    return cost;
+  }
+
+  /* ---------- bot logic ---------- */
+
+  function botChooseAbatement(company, sector, year, priceGuess) {
+    var target = targetIntensity(company, sector, year);
+    var from = company.activatedCount;
+    var count = from;
+    if (company.strategy === "frontloader") {
+      count = year === 1 ? Math.max(from, 3) : 4;
+    } else if (company.strategy === "banker") {
+      count = from;
+      while (count < 4 && company.measures[count].costPerTonne <= priceGuess * 1.1) count++;
+    } else if (company.strategy === "laggard_payer") {
+      count = Math.min(from + 1, 1);
+    } else {
+      // complier: activate just enough to hit target with a small buffer
+      count = from;
+      while (count < 4) {
+        var reduced = cumulativeReduction(company, count);
+        var intensity = company.baselineIntensity - reduced;
+        if (intensity <= target * 1.02) break;
+        count++;
+      }
+    }
+    return clamp(count, from, 4);
+  }
+
+  function botChooseOrder(company, surplusDeficit, priceGuess) {
+    if (surplusDeficit > 0) {
+      var sellQty, minPrice;
+      if (company.strategy === "banker") { sellQty = surplusDeficit * 0.35; minPrice = priceGuess * 1.15; }
+      else if (company.strategy === "frontloader") { sellQty = surplusDeficit * 0.9; minPrice = priceGuess * 0.85; }
+      else { sellQty = surplusDeficit * 0.7; minPrice = priceGuess * 0.95; }
+      return { side: "sell", qty: sellQty, limitPrice: clamp(minPrice, PRICE_FLOOR, PRICE_CEIL) };
+    } else if (surplusDeficit < 0) {
+      var shortfall = -surplusDeficit;
+      var afterBank = Math.max(0, shortfall - company.bank);
+      if (afterBank <= 0) return null;
+      var buyQty, maxPrice;
+      if (company.strategy === "laggard_payer") { buyQty = afterBank * 0.3; maxPrice = priceGuess * 0.7; }
+      else if (company.strategy === "banker") { buyQty = afterBank * 0.5; maxPrice = priceGuess * 0.9; }
+      else { buyQty = afterBank * 0.85; maxPrice = priceGuess * 1.2; }
+      return { side: "buy", qty: buyQty, limitPrice: clamp(maxPrice, PRICE_FLOOR, PRICE_CEIL) };
+    }
+    return null;
+  }
+
+  /* ---------- auction ---------- */
+
+  function clearAuction(orders, priorPrice) {
+    var bids = orders.filter(function (o) { return o.side === "buy" && o.qty > 0; }).sort(function (a, b) { return b.limitPrice - a.limitPrice; });
+    var asks = orders.filter(function (o) { return o.side === "sell" && o.qty > 0; }).sort(function (a, b) { return a.limitPrice - b.limitPrice; });
+    if (!bids.length || !asks.length) {
+      return { clearingPrice: clamp(priorPrice, PRICE_FLOOR, PRICE_CEIL), fills: {}, matchedTotal: 0, bids: bids, asks: asks };
+    }
+    var bestPrice = null, bestQty = -1;
+    asks.forEach(function (a) {
+      var p = a.limitPrice;
+      var demandQty = bids.filter(function (b) { return b.limitPrice >= p; }).reduce(function (s, b) { return s + b.qty; }, 0);
+      var supplyQty = asks.filter(function (x) { return x.limitPrice <= p; }).reduce(function (s, x) { return s + x.qty; }, 0);
+      var matched = Math.min(demandQty, supplyQty);
+      if (matched > bestQty) { bestQty = matched; bestPrice = p; }
+    });
+    if (bestPrice === null || bestQty <= 0) {
+      return { clearingPrice: clamp(priorPrice, PRICE_FLOOR, PRICE_CEIL), fills: {}, matchedTotal: 0, bids: bids, asks: asks };
+    }
+    var clearingPrice = clamp(bestPrice, PRICE_FLOOR, PRICE_CEIL);
+    var fills = {};
+    var remaining = bestQty;
+    bids.forEach(function (b) {
+      if (remaining <= 0 || b.limitPrice < clearingPrice - 1e-9) return;
+      var q = Math.min(b.qty, remaining);
+      fills[b.companyId] = (fills[b.companyId] || 0) + q;
+      remaining -= q;
+    });
+    remaining = bestQty;
+    asks.forEach(function (a) {
+      if (remaining <= 0 || a.limitPrice > clearingPrice + 1e-9) return;
+      var q = Math.min(a.qty, remaining);
+      fills[a.companyId] = (fills[a.companyId] || 0) + q;
+      remaining -= q;
+    });
+    return { clearingPrice: clearingPrice, fills: fills, matchedTotal: bestQty, bids: bids, asks: asks };
+  }
+
+  /* ---------- app state ---------- */
+
+  var G = {
+    screen: "landing",
+    year: 1,
+    companies: [],
+    playerId: null,
+    priceHistory: [],
+    yearData: {},
+    draft: { sectorId: null, archetypeId: null },
+    abateDraft: 0,
+    tradeDraft: { qty: 0, limitPrice: PRICE_FLOOR }
+  };
+
+  function sectorById(id) { return SECTORS.filter(function (s) { return s.id === id; })[0]; }
+  function companyById(id) { return G.companies.filter(function (c) { return c.id === id; })[0]; }
+  function player() { return companyById(G.playerId); }
+
+  function startGame() {
+    var sector = sectorById(G.draft.sectorId);
+    var archetype = ARCHETYPES.filter(function (a) { return a.id === G.draft.archetypeId; })[0];
+    G.companies = [];
+    G.playerId = sector.id;
+    G.companies.push(generateCompany(sector, archetype, true, null));
+    SECTORS.filter(function (s) { return s.id !== sector.id; }).forEach(function (s, i) {
+      var botArche = ARCHETYPES[i % ARCHETYPES.length];
+      var strategy = BOT_STRATEGIES[i % BOT_STRATEGIES.length];
+      G.companies.push(generateCompany(s, botArche, false, strategy));
+    });
+    G.year = 1;
+    G.priceHistory = [];
+    G.yearData = {};
+    G.screen = "briefing";
+    render();
+  }
+
+  function beginAbatement() {
+    G.abateDraft = player().activatedCount;
+    G.screen = "abatement";
+    render();
+  }
+
+  function confirmAbatement() {
+    var yd = ensureYearData();
+    var sector = sectorById(player().sectorId);
+    G.companies.forEach(function (c) {
+      var s = sectorById(c.sectorId);
+      var priceGuess = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+      var newCount = c.isPlayer ? clamp(G.abateDraft, c.activatedCount, 4) : botChooseAbatement(c, s, G.year, priceGuess);
+      var capex = newMeasuresCost(c, c.activatedCount, newCount);
+      var target = targetIntensity(c, s, G.year);
+      var reduced = cumulativeReduction(c, newCount);
+      var actualIntensity = c.baselineIntensity - reduced;
+      var emissions = actualIntensity * c.output;
+      var allowance = target * c.output;
+      c.activatedCount = newCount;
+      yd.abate[c.id] = { capex: capex, actualIntensity: actualIntensity, target: target, emissions: emissions, allowance: allowance, surplusDeficit: allowance - emissions };
+    });
+    G.screen = "trading";
+    var priceGuess2 = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+    var pAbate = yd.abate[player().id];
+    G.tradeDraft = pAbate.surplusDeficit >= 0
+      ? { qty: Math.round(pAbate.surplusDeficit * 0.7), limitPrice: Math.round(priceGuess2 * 0.95) }
+      : { qty: Math.round(Math.max(0, -pAbate.surplusDeficit - player().bank) * 0.85), limitPrice: Math.round(priceGuess2 * 1.15) };
+    render();
+  }
+
+  function ensureYearData() {
+    if (!G.yearData[G.year]) G.yearData[G.year] = { abate: {}, orders: [], auction: null, settled: {} };
+    return G.yearData[G.year];
+  }
+
+  function submitTrading() {
+    var yd = ensureYearData();
+    var priceGuess = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+    var orders = [];
+    G.companies.forEach(function (c) {
+      var sd = yd.abate[c.id].surplusDeficit;
+      if (c.isPlayer) {
+        var qty = clamp(G.tradeDraft.qty, 0, sd >= 0 ? sd : Math.max(0, -sd - c.bank));
+        if (qty > 0) orders.push({ companyId: c.id, side: sd >= 0 ? "sell" : "buy", qty: qty, limitPrice: clamp(G.tradeDraft.limitPrice, PRICE_FLOOR, PRICE_CEIL) });
+      } else {
+        var o = botChooseOrder(c, sd, priceGuess);
+        if (o && o.qty > 0.5) orders.push({ companyId: c.id, side: o.side, qty: o.qty, limitPrice: o.limitPrice });
+      }
+    });
+    var auction = clearAuction(orders, priceGuess);
+    yd.orders = orders;
+    yd.auction = auction;
+    G.priceHistory.push({ year: G.year, price: auction.clearingPrice });
+
+    G.companies.forEach(function (c) {
+      var ab = yd.abate[c.id];
+      var sd = ab.surplusDeficit;
+      var filled = auction.fills[c.id] || 0;
+      var bankUsed = 0, bought = 0, sold = 0, penalty = 0, bankedNow = 0;
+      if (sd >= 0) {
+        sold = filled;
+        bankedNow = sd - filled;
+        c.bank += bankedNow;
+      } else {
+        var shortfall = -sd;
+        bankUsed = Math.min(c.bank, shortfall);
+        c.bank -= bankUsed;
+        var remaining = shortfall - bankUsed;
+        bought = Math.min(filled, remaining);
+        var stillShort = remaining - bought;
+        if (stillShort > 0.01) penalty = stillShort * 2 * auction.clearingPrice;
+      }
+      var revenue = c.margin * c.output;
+      var netTrade = sold * auction.clearingPrice - bought * auction.clearingPrice;
+      var yearProfit = revenue - ab.capex - penalty + netTrade;
+      c.totalProfit += yearProfit;
+      var rec = { year: G.year, target: ab.target, actual: ab.actualIntensity, surplusDeficit: sd, bankUsed: bankUsed, bought: bought, sold: sold, bankedNow: bankedNow, penalty: penalty, price: auction.clearingPrice, capex: ab.capex, yearProfit: yearProfit, bankEnd: c.bank };
+      c.history.push(rec);
+      yd.settled[c.id] = rec;
+    });
+
+    G.screen = "settlement";
+    render();
+  }
+
+  function nextYear() {
+    if (G.year === 1) {
+      G.year = 2;
+      G.screen = "briefing";
+    } else {
+      G.screen = "summary";
+    }
+    render();
+  }
+
+  function restart() {
+    G.screen = "landing";
+    G.draft = { sectorId: null, archetypeId: null };
+    render();
+  }
+
+  /* ---------- charts ---------- */
+
+  function svgOpen(w, h) { return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" height="' + h + '" role="img" preserveAspectRatio="xMidYMid meet">'; }
+
+  function bulletChart(actual, target, baseline, w) {
+    w = w || 460;
+    var h = 64;
+    var padL = 4, padR = 4;
+    var innerW = w - padL - padR;
+    var maxV = baseline * 1.05;
+    var scale = function (v) { return padL + (v / maxV) * innerW; };
+    var good = actual <= target;
+    var color = good ? "var(--good)" : "var(--critical)";
+    var svg = svgOpen(w, h);
+    svg += '<rect x="' + padL + '" y="20" width="' + innerW + '" height="18" rx="4" fill="var(--grid)" />';
+    svg += '<rect x="' + padL + '" y="20" width="' + scale(actual) + '" height="18" rx="4" fill="' + color + '" />';
+    var tx = scale(target);
+    svg += '<line x1="' + tx + '" y1="12" x2="' + tx + '" y2="46" stroke="var(--ink)" stroke-width="2.5" />';
+    svg += '<text x="' + padL + '" y="10" font-size="10" letter-spacing="0.04em">0</text>';
+    svg += '<text x="' + (w - padR) + '" y="10" font-size="10" text-anchor="end" letter-spacing="0.04em">BASELINE ' + num2.format(baseline) + '</text>';
+    svg += '<text x="' + tx + '" y="60" font-size="10.5" text-anchor="middle" fill="var(--ink)" font-weight="700">TARGET ' + num2.format(target) + '</text>';
+    svg += "</svg>";
+    return svg;
+  }
+
+  function crossingChart(auction, w) {
+    w = w || 520;
+    var h = 220;
+    var padL = 48, padR = 16, padT = 16, padB = 34;
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    var bids = auction.bids || [], asks = auction.asks || [];
+    if (!bids.length || !asks.length) {
+      return '<div class="muted" style="padding:2rem 0;text-align:center;">No crossing orders this round — market did not clear.</div>';
+    }
+    var maxQty = 0, cum;
+    cum = 0; bids.forEach(function (b) { cum += b.qty; }); maxQty = Math.max(maxQty, cum);
+    cum = 0; asks.forEach(function (a) { cum += a.qty; }); maxQty = Math.max(maxQty, cum);
+    maxQty = maxQty * 1.08 || 1;
+    var maxP = Math.max(PRICE_CEIL, auction.clearingPrice * 1.1);
+    var minP = Math.min(PRICE_FLOOR, auction.clearingPrice * 0.9);
+    var xScale = function (q) { return padL + (q / maxQty) * innerW; };
+    var yScale = function (p) { return padT + innerH - ((p - minP) / (maxP - minP)) * innerH; };
+
+    function pathFor(orders, ascending) {
+      var pts = [];
+      var c = 0;
+      pts.push([xScale(0), yScale(orders[0].limitPrice)]);
+      orders.forEach(function (o) {
+        pts.push([xScale(c), yScale(o.limitPrice)]);
+        c += o.qty;
+        pts.push([xScale(c), yScale(o.limitPrice)]);
+      });
+      return pts.map(function (p, i) { return (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" ");
+    }
+
+    var svg = svgOpen(w, h);
+    for (var i = 0; i <= 4; i++) {
+      var gy = padT + (innerH / 4) * i;
+      svg += '<line x1="' + padL + '" y1="' + gy + '" x2="' + (w - padR) + '" y2="' + gy + '" stroke="var(--grid)" stroke-width="1" />';
+    }
+    svg += '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (padT + innerH) + '" stroke="var(--baseline)" stroke-width="1" />';
+    svg += '<line x1="' + padL + '" y1="' + (padT + innerH) + '" x2="' + (w - padR) + '" y2="' + (padT + innerH) + '" stroke="var(--baseline)" stroke-width="1" />';
+    svg += '<path d="' + pathFor(bids, false) + '" fill="none" stroke="var(--price)" stroke-width="2.5" stroke-linecap="round" />';
+    svg += '<path d="' + pathFor(asks, true) + '" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" />';
+    var cy = yScale(auction.clearingPrice);
+    svg += '<line x1="' + padL + '" y1="' + cy + '" x2="' + (w - padR) + '" y2="' + cy + '" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="3,3" />';
+    svg += '<circle cx="' + xScale(auction.matchedTotal) + '" cy="' + cy + '" r="4.5" fill="var(--ink)" />';
+    svg += '<text x="' + (w - padR) + '" y="' + (cy - 6) + '" font-size="11" text-anchor="end" font-weight="700" fill="var(--ink)">CLEARS AT ₹' + moneyInt.format(Math.round(auction.clearingPrice)) + '</text>';
+    svg += '<text x="' + padL + '" y="' + (h - 10) + '" font-size="10" fill="var(--muted)">Quantity (tCO2e)</text>';
+    svg += '<text x="' + (padL - 6) + '" y="' + padT + '" font-size="10" text-anchor="end" fill="var(--muted)">₹' + moneyInt.format(Math.round(maxP)) + '</text>';
+    svg += '<text x="' + (padL - 6) + '" y="' + (padT + innerH) + '" font-size="10" text-anchor="end" fill="var(--muted)">₹' + moneyInt.format(Math.round(minP)) + '</text>';
+    svg += "</svg>";
+    return '<div class="row" style="gap:1.25rem;font-size:11.5px;color:var(--ink-2);margin-bottom:0.4rem;">' +
+      '<span><svg width="14" height="10"><line x1="0" y1="5" x2="14" y2="5" stroke="var(--price)" stroke-width="2.5"/></svg> Demand (bids)</span>' +
+      '<span><svg width="14" height="10"><line x1="0" y1="5" x2="14" y2="5" stroke="var(--accent)" stroke-width="2.5"/></svg> Supply (asks)</span>' +
+      '</div>' + svg;
+  }
+
+  function priceTrajectoryChart(w) {
+    w = w || 520;
+    var h = 200;
+    var padL = 48, padR = 16, padT = 18, padB = 30;
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    var pts = G.priceHistory;
+    var maxP = Math.max(PRICE_CEIL, 1) * 1.05;
+    var minP = 0;
+    var xScale = function (i) { return pts.length > 1 ? padL + (i / (pts.length - 1)) * innerW : padL + innerW / 2; };
+    var yScale = function (p) { return padT + innerH - ((p - minP) / (maxP - minP)) * innerH; };
+    var svg = svgOpen(w, h);
+    for (var i = 0; i <= 4; i++) {
+      var gy = padT + (innerH / 4) * i;
+      svg += '<line x1="' + padL + '" y1="' + gy + '" x2="' + (w - padR) + '" y2="' + gy + '" stroke="var(--grid)" stroke-width="1" />';
+    }
+    svg += '<line x1="' + padL + '" y1="' + yScale(PRICE_FLOOR) + '" x2="' + (w - padR) + '" y2="' + yScale(PRICE_FLOOR) + '" stroke="var(--baseline)" stroke-dasharray="2,3" />';
+    svg += '<line x1="' + padL + '" y1="' + yScale(PRICE_CEIL) + '" x2="' + (w - padR) + '" y2="' + yScale(PRICE_CEIL) + '" stroke="var(--baseline)" stroke-dasharray="2,3" />';
+    if (pts.length) {
+      var area = "M" + xScale(0) + "," + (padT + innerH);
+      pts.forEach(function (p, i) { area += " L" + xScale(i) + "," + yScale(p.price); });
+      area += " L" + xScale(pts.length - 1) + "," + (padT + innerH) + " Z";
+      svg += '<path d="' + area + '" fill="var(--price)" opacity="0.12" />';
+      var line = pts.map(function (p, i) { return (i === 0 ? "M" : "L") + xScale(i) + "," + yScale(p.price); }).join(" ");
+      svg += '<path d="' + line + '" fill="none" stroke="var(--price)" stroke-width="2.5" stroke-linecap="round" />';
+      pts.forEach(function (p, i) {
+        var last = i === pts.length - 1;
+        svg += '<circle cx="' + xScale(i) + '" cy="' + yScale(p.price) + '" r="' + (last ? 5 : 3.5) + '" fill="var(--price)" />';
+        svg += '<text x="' + xScale(i) + '" y="' + (yScale(p.price) - 12) + '" font-size="11" text-anchor="middle" font-weight="700" fill="var(--ink)">₹' + moneyInt.format(Math.round(p.price)) + '</text>';
+        svg += '<text x="' + xScale(i) + '" y="' + (h - 8) + '" font-size="10.5" text-anchor="middle" fill="var(--muted)">FY 20' + (24 + p.year) + '-' + (25 + p.year) + '</text>';
+      });
+    }
+    svg += "</svg>";
+    return svg;
+  }
+
+  function leaderboardChart(companies, w) {
+    w = w || 520;
+    var rowH = 30;
+    var h = companies.length * rowH + 10;
+    var padL = 4, padR = 90;
+    var innerW = w - padL - padR;
+    var maxAbs = Math.max.apply(null, companies.map(function (c) { return Math.abs(c.totalProfit); })) || 1;
+    var svg = svgOpen(w, h);
+    companies.forEach(function (c, i) {
+      var y = i * rowH + 6;
+      var barW = (Math.abs(c.totalProfit) / maxAbs) * (innerW * 0.55);
+      var lastRec = c.history[c.history.length - 1];
+      var compliant = lastRec ? lastRec.penalty <= 0.01 : true;
+      var color = c.totalProfit < 0 ? "var(--critical)" : (compliant ? "var(--good)" : "var(--warning)");
+      svg += '<text x="' + padL + '" y="' + (y + 14) + '" font-size="12" fill="var(--ink)" font-weight="' + (c.isPlayer ? 700 : 500) + '">' + (c.isPlayer ? "★ " : "") + escapeHtml(c.sectorName) + '</text>';
+      svg += '<rect x="' + (w - padR) + '" y="' + (y + 3) + '" width="' + Math.max(2, barW) + '" height="16" rx="3" fill="' + color + '" opacity="' + (c.isPlayer ? 1 : 0.72) + '" />';
+      svg += '<text x="' + (w - padR + Math.max(2, barW) + 8) + '" y="' + (y + 15) + '" font-size="11" fill="var(--ink-2)" font-family="var(--mono)">' + cr(c.totalProfit) + '</text>';
+    });
+    svg += "</svg>";
+    return svg;
+  }
+
+  function escapeHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  /* ---------- render: shell ---------- */
+
+  function stepsBar(current) {
+    var order = ["briefing", "abatement", "trading", "settlement"];
+    var labels = { briefing: "Target Briefing", abatement: "Abatement Plan", trading: "Exchange", settlement: "Settlement" };
+    var idx = order.indexOf(current);
+    return '<div class="steps">' + order.map(function (s, i) {
+      var cls = i === idx ? "on" : (i < idx ? "done" : "");
+      return '<span class="step ' + cls + '">' + (i + 1) + "  " + labels[s] + '</span>';
+    }).join("") + '</div>';
+  }
+
+  function ticker() {
+    var lastPrice = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : null;
+    var yearLabel = G.year === 1 ? "FY 2025-26" : "FY 2026-27";
+    var phaseLabel = { landing: "Lobby", setup: "Registration", briefing: "Briefing", abatement: "Abatement Window", trading: "Trading Window", settlement: "Settlement", summary: "Compliance Period Closed" }[G.screen] || "";
+    var html = '<div class="ticker">';
+    html += '<span><span class="tk-label">Scheme</span><b>CCTS · Compliance Mechanism</b></span>';
+    html += '<span class="tk-sep">│</span>';
+    html += '<span><span class="tk-label">Period</span><b>' + yearLabel + '</b></span>';
+    html += '<span class="tk-sep">│</span>';
+    html += '<span><span class="tk-label">CCC Last Clear</span><span class="tk-price">' + (lastPrice ? rupee(lastPrice) + "/tCO2e" : "—") + '</span></span>';
+    html += '<span class="tk-sep">│</span>';
+    html += '<span><span class="tk-label">Phase</span><b>' + phaseLabel + '</b></span>';
+    if (G.companies.length) {
+      html += '<span class="tk-sep">│</span>';
+      html += '<span><span class="tk-label">Operator</span><b>' + escapeHtml(player().name) + '</b></span>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function render() {
+    var app = document.getElementById("app");
+    app.innerHTML = ticker() + "<main>" + screenHtml() + "</main>";
+    bindEvents();
+  }
+
+  function screenHtml() {
+    switch (G.screen) {
+      case "landing": return renderLanding();
+      case "setup": return renderSetup();
+      case "briefing": return renderBriefing();
+      case "abatement": return renderAbatement();
+      case "trading": return renderTrading();
+      case "settlement": return renderSettlement();
+      case "summary": return renderSummary();
+      default: return "";
+    }
+  }
+
+  /* ---------- render: screens ---------- */
+
+  function renderLanding() {
+    return '<div class="wrap-narrow stack">' +
+      '<div class="eyebrow">India · Carbon Credit Trading Scheme · Compliance Mechanism</div>' +
+      '<h1>Run a company inside India’s carbon market.</h1>' +
+      '<p>You will operate one of nine CCTS-obligated sectors through the FY 2025-26 and FY 2026-27 compliance years — set your own emission-intensity target trajectory, decide how much to spend on abatement, and trade Carbon Credit Certificates (CCCs) against eight AI-driven counterparts on a live exchange.</p>' +
+      '<div class="card stack">' +
+        '<div class="row" style="justify-content:space-between;align-items:center;">' +
+          '<div><h3 style="margin:0;">Solo vs. AI Operators</h3><p style="margin:0.25rem 0 0;">Playable now.</p></div>' +
+          '<div class="row" style="gap:0.6rem;">' +
+            '<a class="btn btn-ghost" href="guide.html" target="_blank" rel="noopener">How to Play ↗</a>' +
+            '<button class="btn" data-action="goto-setup">Register a Company →</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="row">' +
+        '<div class="card" style="flex:1;min-width:240px;opacity:0.6;"><h3 style="margin:0;">Market Simulator</h3><p style="margin:0.25rem 0 0;">Batch-forecast market outcomes under configurable behavioral mixes. Coming next.</p></div>' +
+        '<div class="card" style="flex:1;min-width:240px;opacity:0.6;"><h3 style="margin:0;">Live Multiplayer</h3><p style="margin:0.25rem 0 0;">Gather real operators, one per sector, on a shared exchange. Coming next.</p></div>' +
+      '</div>' +
+      '<p class="foot-note">Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali and Pulp & Paper are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Company-level financials are illustrative.</p>' +
+    '</div>';
+  }
+
+  function renderSetup() {
+    var sec = G.draft.sectorId ? sectorById(G.draft.sectorId) : null;
+    var html = '<div class="wrap stack">';
+    html += '<div class="eyebrow">Registration</div><h2>Choose your sector</h2>';
+    html += '<div class="sector-grid">';
+    SECTORS.forEach(function (s) {
+      var sel = s.id === G.draft.sectorId;
+      var disclosed = DISCLOSED_SECTORS[s.id];
+      html += '<button class="sector-tile' + (sel ? " selected" : "") + '" data-action="pick-sector" data-id="' + s.id + '">' +
+        '<div class="st-name">' + s.name + '</div>' +
+        '<div class="st-meta">Baseline ' + num2.format(s.baseline) + ' tCO2e/' + s.unit.replace("tonne ", "") + '</div>' +
+        '<div class="st-meta">FY26 −' + pct(s.fy26) + ' · FY27 −' + pct(s.fy27) + (disclosed ? "" : " (illustrative)") + '</div>' +
+      '</button>';
+    });
+    html += '</div>';
+
+    if (sec) {
+      html += '<h2 style="margin-top:1rem;">Choose your operating posture</h2>';
+      html += '<div class="archetype-grid">';
+      ARCHETYPES.forEach(function (a) {
+        var sel = a.id === G.draft.archetypeId;
+        html += '<button class="arche-tile' + (sel ? " selected" : "") + '" data-action="pick-archetype" data-id="' + a.id + '">' +
+          '<div class="at-name">' + a.name + '</div><div class="at-desc">' + a.desc + '</div>' +
+        '</button>';
+      });
+      html += '</div>';
+    }
+
+    html += '<div class="row" style="justify-content:space-between;margin-top:0.5rem;">';
+    html += '<button class="btn btn-ghost" data-action="back-landing">← Back</button>';
+    html += '<button class="btn" data-action="start-game"' + (sec && G.draft.archetypeId ? "" : " disabled") + '>Take Over Operations →</button>';
+    html += '</div></div>';
+    return html;
+  }
+
+  function sidebarCard() {
+    var p = player();
+    var sec = sectorById(p.sectorId);
+    var lastRec = p.history[p.history.length - 1];
+    return '<div class="card stack">' +
+      '<div><h3 style="margin:0;">' + escapeHtml(p.name) + '</h3><p class="muted" style="margin:0.2rem 0 0;">' + p.archetypeName + ' · ' + moneyInt.format(p.output) + ' ' + sec.unit + '/yr</p></div>' +
+      '<hr class="divider"/>' +
+      '<div class="kpi-row">' +
+        '<div class="kpi"><span class="kv">' + cr(p.totalProfit) + '</span><span class="kl">Cumulative Profit</span></div>' +
+        '<div class="kpi"><span class="kv">' + moneyInt.format(Math.round(p.bank)) + '</span><span class="kl">CCCs Banked</span></div>' +
+      '</div>' +
+      (lastRec ? '<div class="pill ' + (lastRec.penalty > 0.01 ? "pill-bad" : "pill-good") + '">' + (lastRec.penalty > 0.01 ? "Penalized FY" + (24 + lastRec.year) : "Compliant FY" + (24 + lastRec.year)) + '</div>' : "") +
+    '</div>';
+  }
+
+  function renderBriefing() {
+    var p = player();
+    var sec = sectorById(p.sectorId);
+    var target = targetIntensity(p, sec, G.year);
+    var reductionPct = G.year === 1 ? sec.fy26 : sec.fy27;
+    var yearLabel = G.year === 1 ? "FY 2025-26" : "FY 2026-27";
+    return '<div class="wrap grid-2">' +
+      '<div class="stack">' + sidebarCard() + '</div>' +
+      '<div class="stack">' +
+        stepsBar("briefing") +
+        '<div class="eyebrow">Compliance Period ' + G.year + ' of 2</div>' +
+        '<h2>' + yearLabel + ' target notified</h2>' +
+        '<div class="card stack">' +
+          '<p>The Bureau of Energy Efficiency has notified your sector’s emission-intensity trajectory. Your entity-level target for ' + yearLabel + ':</p>' +
+          '<div class="kpi-row">' +
+            '<div class="kpi"><span class="kv">' + num2.format(p.baselineIntensity) + '</span><span class="kl">FY23-24 Baseline (tCO2e/' + sec.unit.replace("tonne ", "") + ')</span></div>' +
+            '<div class="kpi"><span class="kv">−' + pct(reductionPct) + '</span><span class="kl">Required Cumulative Cut</span></div>' +
+            '<div class="kpi"><span class="kv">' + num2.format(target) + '</span><span class="kl">Target Intensity</span></div>' +
+          '</div>' +
+          '<p class="muted" style="margin:0;">Miss the target and you must surrender CCCs to cover the gap — from your bank first, then the exchange. Any shortfall left uncovered is penalized at 2× the prevailing market price. Beat the target and the surplus becomes CCCs you can sell or bank indefinitely.</p>' +
+        '</div>' +
+        '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="goto-abatement">Plan Abatement →</button></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderAbatement() {
+    var p = player();
+    var sec = sectorById(p.sectorId);
+    var target = targetIntensity(p, sec, G.year);
+    var count = G.abateDraft;
+    var reduced = cumulativeReduction(p, count);
+    var actual = p.baselineIntensity - reduced;
+    var capex = newMeasuresCost(p, p.activatedCount, count);
+    var html = '<div class="wrap grid-2">' +
+      '<div class="stack">' + sidebarCard() + '</div>' +
+      '<div class="stack">' +
+        stepsBar("abatement") +
+        '<h2>Abatement plan</h2>' +
+        '<p>Deploy measures cheapest-first. Investments carry forward for free in future years — only newly activated measures cost capital this period.</p>' +
+        '<div class="chart-card">' + bulletChart(actual, target, p.baselineIntensity) + '</div>' +
+        '<div class="card stack" id="measure-list">' + measureRows(p, count) + '</div>' +
+        '<input type="range" min="0" max="4" step="1" value="' + count + '" id="abate-slider" />' +
+        '<div class="row" style="justify-content:space-between;">' +
+          '<div class="kpi"><span class="kv" id="abate-capex">' + cr(capex) + '</span><span class="kl">Capex This Period</span></div>' +
+          '<div class="kpi"><span class="kv" id="abate-intensity" style="color:' + (actual <= target ? "var(--good)" : "var(--critical)") + '">' + num2.format(actual) + '</span><span class="kl">Resulting Intensity</span></div>' +
+        '</div>' +
+        '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="confirm-abatement">Lock In Plan →</button></div>' +
+      '</div>' +
+    '</div>';
+    return html;
+  }
+
+  function measureRows(p, activeCount) {
+    return p.measures.map(function (m, i) {
+      var active = i < activeCount;
+      var already = i < p.activatedCount;
+      return '<div class="measure-row' + (active ? " active" : "") + '">' +
+        '<div><div class="m-name">' + (i + 1) + '. ' + m.label + '</div>' +
+        '<div class="m-meta">' + num2.format(m.reductionPerUnit) + ' tCO2e/unit cut · ' + rupee(m.costPerTonne) + '/tCO2e' + (already ? " · already active" : "") + '</div></div>' +
+        '<span class="pill ' + (active ? "pill-good" : "pill-warn") + '">' + (active ? "Active" : "Idle") + '</span>' +
+      '</div>';
+    }).join("");
+  }
+
+  function renderTrading() {
+    var p = player();
+    var yd = ensureYearData();
+    var ab = yd.abate[p.id];
+    var sd = ab.surplusDeficit;
+    var priceGuess = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+    var isSeller = sd >= 0;
+    var maxQty = isSeller ? Math.max(0, sd) : Math.max(0, -sd - p.bank);
+    var html = '<div class="wrap grid-2">' +
+      '<div class="stack">' + sidebarCard() +
+        '<div class="card"><h3 style="margin-top:0;">Your position</h3>' +
+        '<div class="kpi-row">' +
+          '<div class="kpi"><span class="kv">' + num2.format(Math.abs(sd)) + '</span><span class="kl">tCO2e ' + (isSeller ? "Surplus" : "Deficit") + '</span></div>' +
+          '<div class="kpi"><span class="kv">' + moneyInt.format(Math.round(p.bank)) + '</span><span class="kl">Bank Available</span></div>' +
+        '</div></div>' +
+      '</div>' +
+      '<div class="stack">' +
+        stepsBar("trading") +
+        '<h2>Exchange · CCC trading window</h2>' +
+        '<p>Post your order to the power exchange. A uniform clearing price is set where total demand meets total supply across all nine operators, bounded by the planned price collar (₹' + moneyInt.format(PRICE_FLOOR) + '–₹' + moneyInt.format(PRICE_CEIL) + '/tCO2e).</p>' +
+        '<div class="card stack">' +
+          '<div class="row">' +
+            '<label class="field" style="flex:1;">Quantity to ' + (isSeller ? "sell" : "buy") + ' (of ' + moneyInt.format(Math.round(maxQty)) + ' tCO2e available)' +
+              '<input type="number" id="trade-qty" min="0" max="' + Math.round(maxQty) + '" value="' + Math.round(G.tradeDraft.qty) + '" /></label>' +
+            '<label class="field" style="flex:1;">' + (isSeller ? "Minimum acceptable price" : "Maximum willing price") + ' (₹/tCO2e)' +
+              '<input type="number" id="trade-price" min="' + PRICE_FLOOR + '" max="' + PRICE_CEIL + '" value="' + Math.round(G.tradeDraft.limitPrice) + '" /></label>' +
+          '</div>' +
+          '<p class="muted" style="margin:0;">Last clearing reference: ' + rupee(priceGuess) + '/tCO2e' + (G.priceHistory.length ? "" : " (no prior trades — collar midpoint shown)") + '. Any ' + (isSeller ? "unsold surplus is banked automatically." : "uncovered deficit after this trade is penalized at 2× the clearing price.") + '</p>' +
+        '</div>' +
+        '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="submit-trading">Submit Order →</button></div>' +
+      '</div>' +
+    '</div>';
+    return html;
+  }
+
+  function renderSettlement() {
+    var yd = ensureYearData();
+    var p = player();
+    var rec = yd.settled[p.id];
+    var auction = yd.auction;
+    var yearLabel = G.year === 1 ? "FY 2025-26" : "FY 2026-27";
+    var ranked = G.companies.slice().sort(function (a, b) { return b.totalProfit - a.totalProfit; });
+    var html = '<div class="wrap grid-2">' +
+      '<div class="stack">' + sidebarCard() + '</div>' +
+      '<div class="stack">' +
+        stepsBar("settlement") +
+        '<h2>' + yearLabel + ' settlement</h2>' +
+        '<div class="chart-card"><h3 style="margin-top:0;">Auction crossing</h3>' + crossingChart(auction) + '</div>' +
+        '<div class="card stack">' +
+          '<div class="row" style="justify-content:space-between;align-items:center;">' +
+            '<span class="pill ' + (rec.penalty > 0.01 ? "pill-bad" : "pill-good") + '">' + (rec.penalty > 0.01 ? "Non-compliant" : "Compliant") + '</span>' +
+            '<span class="muted">Cleared at ' + rupee(auction.clearingPrice) + '/tCO2e</span>' +
+          '</div>' +
+          '<div class="table-wrap"><table><tbody>' +
+            settleRow("Target vs. actual intensity", num2.format(rec.target) + " vs " + num2.format(rec.actual)) +
+            settleRow("Surplus / (deficit)", num2.format(rec.surplusDeficit) + " tCO2e") +
+            settleRow("Bank drawn down", moneyInt.format(Math.round(rec.bankUsed)) + " tCO2e") +
+            settleRow("Bought on exchange", moneyInt.format(Math.round(rec.bought)) + " tCO2e") +
+            settleRow("Sold on exchange", moneyInt.format(Math.round(rec.sold)) + " tCO2e") +
+            settleRow("Newly banked", moneyInt.format(Math.round(rec.bankedNow)) + " tCO2e") +
+            settleRow("Penalty (2× price)", rec.penalty > 0.01 ? cr(rec.penalty) : "—") +
+            settleRow("Abatement capex", cr(rec.capex)) +
+            settleRow("Net profit this period", cr(rec.yearProfit)) +
+          '</tbody></table></div>' +
+        '</div>' +
+        '<div class="card"><h3 style="margin-top:0;">Market standings</h3>' + leaderboardChart(ranked) + '</div>' +
+        '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="next-year">' + (G.year === 1 ? "Advance to FY 2026-27 →" : "View Final Results →") + '</button></div>' +
+      '</div>' +
+    '</div>';
+    return html;
+  }
+
+  function settleRow(label, val) { return '<tr><td>' + label + '</td><td class="num">' + val + '</td></tr>'; }
+
+  function renderSummary() {
+    var p = player();
+    var ranked = G.companies.slice().sort(function (a, b) { return b.totalProfit - a.totalProfit; });
+    var rank = ranked.indexOf(p) + 1;
+    var bothCompliant = p.history.every(function (h) { return h.penalty <= 0.01; });
+    var marketAbatement = G.companies.reduce(function (s, c) {
+      var sec = sectorById(c.sectorId);
+      var t = targetIntensity(c, sec, 2);
+      return s + (c.baselineIntensity - t) * c.output;
+    }, 0);
+    var actualAbatement = G.companies.reduce(function (s, c) {
+      return s + (c.baselineIntensity - (c.baselineIntensity - cumulativeReduction(c, c.activatedCount))) * c.output;
+    }, 0);
+    var html = '<div class="wrap stack">' +
+      '<div class="eyebrow">Compliance period closed · FY 2025-26 – FY 2026-27</div>' +
+      '<h1>Final results</h1>' +
+      '<div class="row">' +
+        '<div class="card" style="flex:1;min-width:200px;"><div class="kpi"><span class="kv">#' + rank + ' of ' + G.companies.length + '</span><span class="kl">Market Rank by Profit</span></div></div>' +
+        '<div class="card" style="flex:1;min-width:200px;"><div class="kpi"><span class="kv">' + cr(p.totalProfit) + '</span><span class="kl">Cumulative Profit</span></div></div>' +
+        '<div class="card" style="flex:1;min-width:200px;"><div class="kpi"><span class="kv" style="color:' + (bothCompliant ? "var(--good)" : "var(--critical)") + '">' + (bothCompliant ? "Fully Compliant" : "Penalized") + '</span><span class="kl">Two-Year Record</span></div></div>' +
+      '</div>' +
+      '<div class="row" style="align-items:flex-start;">' +
+        '<div class="chart-card" style="flex:1;min-width:320px;"><h3 style="margin-top:0;">CCC clearing price by period</h3>' + priceTrajectoryChart() + '</div>' +
+        '<div class="card" style="flex:1;min-width:320px;"><h3 style="margin-top:0;">Nine-operator leaderboard</h3>' + leaderboardChart(ranked) + '</div>' +
+      '</div>' +
+      '<div class="card"><h3 style="margin-top:0;">Market-wide abatement</h3>' +
+        '<p>Across all nine simulated operators, FY26-27 intensity targets implied ' + moneyInt.format(Math.round(marketAbatement)) + ' tCO2e/yr of required abatement versus baseline. The market actually delivered ' + moneyInt.format(Math.round(actualAbatement)) + ' tCO2e/yr (' + pct(marketAbatement ? (actualAbatement / marketAbatement) * 100 : 0) + ' of the required cut) once trading, banking and penalties settled.</p>' +
+      '</div>' +
+      '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="restart">Register a New Company →</button></div>' +
+      '<p class="foot-note">Modeled on the CCTS as notified through February 2026. Sector baselines, abatement costs, output volumes and company financials are illustrative approximations for gameplay, not official BEE/CERC figures.</p>' +
+    '</div>';
+    return html;
+  }
+
+  /* ---------- events ---------- */
+
+  function bindEvents() {
+    var app = document.getElementById("app");
+    app.onclick = function (e) {
+      var el = e.target.closest("[data-action]");
+      if (!el) return;
+      var action = el.getAttribute("data-action");
+      if (action === "goto-setup") { G.screen = "setup"; render(); }
+      else if (action === "back-landing") { G.screen = "landing"; render(); }
+      else if (action === "pick-sector") { G.draft.sectorId = el.getAttribute("data-id"); render(); }
+      else if (action === "pick-archetype") { G.draft.archetypeId = el.getAttribute("data-id"); render(); }
+      else if (action === "start-game") { startGame(); }
+      else if (action === "goto-abatement") { beginAbatement(); }
+      else if (action === "confirm-abatement") { confirmAbatement(); }
+      else if (action === "submit-trading") { submitTrading(); }
+      else if (action === "next-year") { nextYear(); }
+      else if (action === "restart") { restart(); }
+    };
+    var slider = document.getElementById("abate-slider");
+    if (slider) {
+      slider.oninput = function () {
+        G.abateDraft = parseInt(slider.value, 10);
+        var p = player();
+        var sec = sectorById(p.sectorId);
+        var target = targetIntensity(p, sec, G.year);
+        var reduced = cumulativeReduction(p, G.abateDraft);
+        var actual = p.baselineIntensity - reduced;
+        var capex = newMeasuresCost(p, p.activatedCount, G.abateDraft);
+        document.getElementById("abate-capex").textContent = cr(capex);
+        var intensityEl = document.getElementById("abate-intensity");
+        intensityEl.textContent = num2.format(actual);
+        intensityEl.style.color = actual <= target ? "var(--good)" : "var(--critical)";
+        document.getElementById("measure-list").innerHTML = measureRows(p, G.abateDraft);
+      };
+    }
+    var qtyEl = document.getElementById("trade-qty");
+    var priceEl = document.getElementById("trade-price");
+    if (qtyEl) qtyEl.oninput = function () { G.tradeDraft.qty = parseFloat(qtyEl.value) || 0; };
+    if (priceEl) priceEl.oninput = function () { G.tradeDraft.limitPrice = parseFloat(priceEl.value) || PRICE_FLOOR; };
+  }
+
+  render();
+})();
+</script>

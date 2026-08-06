@@ -1,0 +1,285 @@
+<meta charset="utf-8">
+<title>User's Guide — CCTS Carbon Market Simulator</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --surface-2: #ffffff;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --accent: #c15a1e;
+    --accent-ink: #ffffff;
+    --price: #2a78d6;
+    --good: #0ca30c;
+    --warning: #b8790a;
+    --serious: #c1552f;
+    --critical: #d03b3b;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    --display: "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --surface-2: #20201f;
+      --ink: #ffffff; --ink-2: #c3c2b7; --muted: #96938a;
+      --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.12);
+      --accent: #e88a4c; --accent-ink: #1a1005; --price: #3987e5;
+      --good: #2fc22f; --warning: #fab219; --serious: #ec835a; --critical: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #20201f;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #96938a;
+    --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.12);
+    --accent: #e88a4c; --accent-ink: #1a1005; --price: #3987e5;
+    --good: #2fc22f; --warning: #fab219; --serious: #ec835a; --critical: #e66767;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #ffffff;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --accent: #c15a1e; --accent-ink: #ffffff; --price: #2a78d6;
+    --good: #0ca30c; --warning: #b8790a; --serious: #c1552f; --critical: #d03b3b;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--page); color: var(--ink); font-family: var(--sans); font-size: 15.5px; line-height: 1.6; }
+
+  .top-nav {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: 0.7rem 1.25rem; background: var(--surface-2); border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 12.5px;
+  }
+  .top-nav a { color: var(--ink-2); text-decoration: none; }
+  .top-nav a:hover { color: var(--accent); }
+  .top-nav .brand { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+
+  main { display: flex; justify-content: center; padding: 2.5rem 1.25rem 5rem; }
+  .doc { width: 100%; max-width: 680px; }
+
+  .eyebrow { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 0.6rem; }
+  h1 { font-family: var(--display); font-size: 2rem; font-weight: 700; text-wrap: balance; margin: 0 0 0.6rem; }
+  h2 { font-family: var(--display); font-size: 1.3rem; font-weight: 700; margin: 2.4rem 0 0.6rem; padding-top: 0.4rem; border-top: 1px solid var(--grid); }
+  h2:first-of-type { border-top: none; padding-top: 0; margin-top: 1.6rem; }
+  h3 { font-family: var(--display); font-size: 1.02rem; font-weight: 700; margin: 1.4rem 0 0.4rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-2); }
+  p { margin: 0 0 0.9rem; color: var(--ink-2); max-width: 62ch; }
+  ul, ol { margin: 0 0 1rem; padding-left: 1.3rem; color: var(--ink-2); }
+  li { margin-bottom: 0.4rem; max-width: 60ch; }
+  strong { color: var(--ink); font-weight: 700; }
+  code { font-family: var(--mono); font-size: 0.92em; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.35rem; color: var(--ink); }
+
+  .lede { font-size: 1.08rem; color: var(--ink-2); }
+
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.3rem; margin: 1.5rem 0 2rem; }
+  .toc h3 { margin-top: 0; }
+  .toc ol { columns: 2; column-gap: 1.5rem; padding-left: 1.1rem; }
+  .toc li { margin-bottom: 0.3rem; break-inside: avoid; }
+  .toc a { color: var(--ink-2); text-decoration: none; font-size: 13.5px; }
+  .toc a:hover { color: var(--accent); }
+  @media (max-width: 560px) { .toc ol { columns: 1; } }
+
+  .callout { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 0.9rem 1.1rem; margin: 1rem 0; }
+  .callout.good { border-color: color-mix(in srgb, var(--good) 40%, var(--border)); }
+  .callout.warn { border-color: color-mix(in srgb, var(--critical) 35%, var(--border)); }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout .c-label { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.35rem; display: block; }
+
+  .phase-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.9rem; margin: 1rem 0 1.5rem; }
+  .phase-card { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 1rem 1.1rem; }
+  .phase-card .p-num { font-family: var(--mono); color: var(--accent); font-weight: 700; font-size: 12px; }
+  .phase-card h4 { margin: 0.3rem 0 0.4rem; font-family: var(--display); font-size: 1.05rem; }
+  .phase-card p { font-size: 13.5px; margin-bottom: 0; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 0.5rem 0 1.3rem; }
+  th, td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+  td { color: var(--ink-2); }
+  td strong { color: var(--ink); }
+  .table-wrap { overflow-x: auto; }
+
+  .pill { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.22rem 0.55rem; border-radius: 999px; }
+  .pill-good { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+  .pill-bad { background: color-mix(in srgb, var(--critical) 16%, transparent); color: var(--critical); }
+
+  dl { margin: 0 0 1.5rem; }
+  dt { font-family: var(--mono); font-weight: 700; color: var(--ink); margin-top: 0.9rem; font-size: 13.5px; }
+  dd { margin: 0.2rem 0 0; color: var(--ink-2); font-size: 13.5px; max-width: 58ch; }
+
+  .btn { display: inline-block; font-weight: 600; font-size: 14px; padding: 0.6rem 1.1rem; border-radius: 7px; background: var(--accent); color: var(--accent-ink); text-decoration: none; }
+  .btn:hover { filter: brightness(1.08); }
+
+  .footline { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--grid); font-size: 12px; color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="top-nav">
+  <span class="brand">CCTS Carbon Market Simulator</span>
+  <a href="index.html">← Back to the simulator</a>
+</div>
+
+<main>
+  <article class="doc">
+    <div class="eyebrow">User's Guide · Solo vs. AI Operators mode</div>
+    <h1>How to play the CCTS Carbon Market Simulator</h1>
+    <p class="lede">You run one company inside India's Carbon Credit Trading Scheme (CCTS) — the intensity-based baseline-and-credit carbon market notified under the Energy Conservation (Amendment) Act, 2022. This guide covers what the scheme means for your company, how each phase of a compliance year works, who the other eight operators are, and what's real versus illustrative in this simulation.</p>
+
+    <div class="toc">
+      <h3>Contents</h3>
+      <ol>
+        <li><a href="#scheme">1. What CCTS actually is</a></li>
+        <li><a href="#quickstart">2. Quick start</a></li>
+        <li><a href="#company">3. Your company</a></li>
+        <li><a href="#year">4. The four phases of a compliance year</a></li>
+        <li><a href="#abatement">5. Reading your abatement cost curve</a></li>
+        <li><a href="#exchange">6. How the exchange clears a price</a></li>
+        <li><a href="#settlement">7. Settlement and your score</a></li>
+        <li><a href="#operators">8. The other eight operators</a></li>
+        <li><a href="#strategy">9. Strategy notes</a></li>
+        <li><a href="#glossary">10. Glossary</a></li>
+        <li><a href="#honesty">11. What's real vs. illustrative</a></li>
+      </ol>
+    </div>
+
+    <h2 id="scheme">1. What CCTS actually is</h2>
+    <p>The Carbon Credit Trading Scheme is India's national carbon market, built on the same Bureau of Energy Efficiency (BEE) infrastructure that ran the older PAT (Perform, Achieve, Trade) energy-efficiency scheme. It has two tiers: a <strong>compliance mechanism</strong> for roughly 740 obligated entities across nine energy-intensive sectors, and a separate voluntary <strong>offset mechanism</strong> for everyone else. This simulator models the compliance mechanism — the one with legally binding targets.</p>
+    <p>Unlike a cap-and-trade scheme, CCTS does not hand out a fixed tonnage cap. It assigns each entity a target <strong>emission intensity</strong> — tonnes of CO2-equivalent per tonne of product — measured against a FY2023-24 baseline. Beat your target and the surplus becomes tradeable Carbon Credit Certificates (CCCs). Miss it, and you must surrender CCCs to cover the gap, or pay a penalty.</p>
+    <div class="callout">
+      <span class="c-label">Why intensity, not a hard cap</span>
+      <p>An intensity target lets output grow without automatically breaching the scheme — a cement plant that produces more cement isn't punished for it, only for producing each tonne more carbon-intensively than its target allows. That's also why your target moves with your own output in this simulator: it's tonnes of CO2e per tonne of product, not a fixed annual ceiling.</p>
+    </div>
+
+    <h2 id="quickstart">2. Quick start</h2>
+    <ol>
+      <li><strong>Register a company.</strong> Pick one of the nine CCTS sectors, then pick a starting posture: Efficient Incumbent, Mid-Pack Operator, or Legacy Laggard.</li>
+      <li><strong>Play two compliance years</strong> — FY 2025-26, then the more stringent FY 2026-27 — each with an abatement decision and a trading window.</li>
+      <li><strong>See where you land</strong> on the nine-operator leaderboard, ranked by cumulative profit, alongside eight AI-driven counterparts.</li>
+    </ol>
+
+    <h2 id="company">3. Your company</h2>
+    <p>Every company has a <strong>baseline intensity</strong> (tCO2e per unit of output, fixed at FY2023-24 levels) and an annual <strong>output volume</strong>. Your starting posture shifts both your baseline and how expensive further cuts are:</p>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Posture</th><th>Baseline intensity</th><th>Remaining abatement</th></tr>
+      <tr><td><strong>Efficient Incumbent</strong></td><td>Below sector average</td><td>Expensive — the cheap fixes are already done</td></tr>
+      <tr><td><strong>Mid-Pack Operator</strong></td><td>Sector average</td><td>Balanced cost curve</td></tr>
+      <tr><td><strong>Legacy Laggard</strong></td><td>Above sector average</td><td>Cheap headroom still available</td></tr>
+    </table>
+    </div>
+    <p>There's a real strategic tension here: an efficient incumbent has less distance to its target in absolute terms, but each further tonne of abatement costs more — sometimes more than it's worth relative to just buying CCCs. A laggard has further to travel but can often get there cheaply. Neither posture is strictly better; it depends on how the market prices carbon.</p>
+
+    <h2 id="year">4. The four phases of a compliance year</h2>
+    <p>Each of the two compliance years (FY 2025-26 and FY 2026-27) runs through the same four phases:</p>
+    <div class="phase-grid">
+      <div class="phase-card"><span class="p-num">01</span><h4>Target Briefing</h4><p>BEE notifies your sector's intensity trajectory. You see your baseline, the required cumulative cut, and your resulting target intensity for the year.</p></div>
+      <div class="phase-card"><span class="p-num">02</span><h4>Abatement Plan</h4><p>Decide how many measures on your cost curve to activate. This sets your actual intensity and how much capital you spend this period.</p></div>
+      <div class="phase-card"><span class="p-num">03</span><h4>Exchange</h4><p>Post a buy or sell order for CCCs. A uniform clearing price is set across all nine operators' orders, bounded by the price collar.</p></div>
+      <div class="phase-card"><span class="p-num">04</span><h4>Settlement</h4><p>Trades execute, shortfalls are covered from your bank or penalized, surplus is sold or banked, and your profit for the period is booked.</p></div>
+    </div>
+    <p>FY 2026-27's targets are always more demanding than FY 2025-26's — this mirrors CCTS's real phased trajectory, which tightens from roughly a 2-3% average cut in the first year to 3.3-7.5%+ in the second.</p>
+
+    <h2 id="abatement">5. Reading your abatement cost curve</h2>
+    <p>Every company has four abatement measures, ordered cheapest-to-most-expensive — a simplified <strong>marginal abatement cost curve (MACC)</strong>. Each measure shows two numbers: how much intensity it cuts (tCO2e per unit of output) and what it costs per tonne abated (₹/tCO2e).</p>
+    <p>The abatement slider activates measures in order — you can't skip to an expensive measure without first activating the cheaper ones ahead of it, which mirrors how real efficiency investment tends to work (the cheap retrofit happens before the expensive process redesign).</p>
+    <div class="callout good">
+      <span class="c-label">Investments are durable</span>
+      <p>Once a measure is activated, it keeps reducing your intensity in every following year for free — you only pay capital for <strong>newly</strong> activated measures each period. Front-loading abatement in Year 1 is a deliberate strategy: it locks in cheap cuts before Year 2's stricter target arrives.</p>
+    </div>
+    <p>Watch the bullet bar on the Abatement Plan screen: the filled bar is your actual intensity, the vertical mark is your target. Green means you're at or under target (a surplus); red means you're still short (a deficit you'll need to cover on the exchange).</p>
+
+    <h2 id="exchange">6. How the exchange clears a price</h2>
+    <p>CCTS trades CCCs through power exchanges under Central Electricity Regulatory Commission oversight, with a price collar mechanism planned. This simulator models that as a <strong>uniform-price call auction</strong>: every one of the nine operators — you and eight AI-driven counterparts — submits one order for the trading window, all at once. Sellers state a minimum acceptable price; buyers state a maximum they'll pay.</p>
+    <p>The system finds the single clearing price where the most volume crosses — every filled seller receives that price, every filled buyer pays that price, regardless of what they originally asked for. The result is clamped to the collar: <strong>₹500–₹6,000 per tCO2e</strong> in this simulation.</p>
+    <ul>
+      <li>If you have a <strong>surplus</strong>, you choose how much to offer for sale and your floor price. Anything you don't offer — or offer but don't sell — is banked automatically.</li>
+      <li>If you have a <strong>deficit</strong>, your bank balance is drawn down first, automatically, before you even reach the trading screen. You then choose how much of the remainder to buy and your ceiling price.</li>
+      <li>If the market simply doesn't cross — nobody's bid reaches anybody's ask — no trade happens and the reference price for the next window falls back to the last real clearing price.</li>
+    </ul>
+
+    <h2 id="settlement">7. Settlement and your score</h2>
+    <p>After the exchange closes, each operator settles independently:</p>
+    <ol>
+      <li>Any deficit not covered by the bank draw-down or exchange purchase is penalized at <strong>2× the clearing price</strong> per tonne short — this is CCTS's actual notified penalty rate.</li>
+      <li>Any surplus not sold is banked. <strong>Banking is unlimited and never expires; borrowing from a future year is never allowed</strong> — both match the real scheme.</li>
+      <li>Your profit for the period is: production margin, minus this period's new abatement capex, minus net CCC spend (what you paid to buy, less what you earned selling), minus any penalty.</li>
+    </ol>
+    <p>Cumulative profit across both years determines your rank on the nine-operator leaderboard at the end of the game.</p>
+
+    <h2 id="operators">8. The other eight operators</h2>
+    <p>The eight AI-driven companies are drawn from four recurring strategies, so the market has real texture rather than one uniform opponent:</p>
+    <dl>
+      <dt>Cost-Minimizing Complier</dt>
+      <dd>Activates just enough measures to hit its target with a small buffer — no more, no less. The market's baseline "sensible" behavior.</dd>
+      <dt>Banker / Speculator</dt>
+      <dd>Activates any measure cheaper than its price expectation, even beyond what's needed to comply, aiming to bank or sell the surplus. Sets a high floor price when selling, betting the market will pay for it.</dd>
+      <dt>Aggressive Early-Abater</dt>
+      <dd>Front-loads measures early to lock in cheap cuts before targets tighten, then sells its surplus fairly aggressively to realize the gain.</dd>
+      <dt>Laggard Penalty-Payer</dt>
+      <dd>Activates the bare minimum and sets a low ceiling price when buying — it would often rather eat the 2× penalty than pay what the market is asking. Watch for this type keeping the exchange from clearing at all.</dd>
+    </dl>
+
+    <h2 id="strategy">9. Strategy notes</h2>
+    <ul>
+      <li><strong>Check whether a measure is worth it before you activate it</strong> — compare its ₹/tCO2e cost to what CCCs are actually trading for. A measure priced above the market is cheaper to skip and buy your way out of instead.</li>
+      <li><strong>Front-loading is a bet on future prices.</strong> Abating hard in Year 1 costs capital now but banks CCCs against Year 2's stricter target — worthwhile if you expect the market to tighten.</li>
+      <li><strong>A big ask doesn't guarantee a sale.</strong> If your floor price sits above every buyer's ceiling, nothing trades and your surplus just gets banked instead — not a loss, but not realized cash either.</li>
+      <li><strong>The penalty is a real backstop, not a bluff.</strong> At 2× the clearing price, letting a deficit ride to settlement is rarely cheaper than covering it on the exchange unless the market is asking an unusually high price.</li>
+    </ul>
+
+    <h2 id="glossary">10. Glossary</h2>
+    <dl>
+      <dt>CCC — Carbon Credit Certificate</dt>
+      <dd>The tradeable unit of the compliance mechanism. 1 CCC = 1 tonne of CO2-equivalent.</dd>
+      <dt>Intensity target</dt>
+      <dd>Your required emissions per unit of output for a given compliance year, expressed in tCO2e per tonne (or equivalent unit) of product.</dd>
+      <dt>Baseline</dt>
+      <dd>Your FY2023-24 emission intensity — the fixed reference point every year's target is cut from.</dd>
+      <dt>MACC — Marginal Abatement Cost Curve</dt>
+      <dd>The ordered list of abatement measures available to a company, cheapest to most expensive.</dd>
+      <dt>Banking</dt>
+      <dd>Carrying unsold surplus CCCs forward to a future compliance year. Unlimited under CCTS.</dd>
+      <dt>Borrowing</dt>
+      <dd>Using a future year's allowance to cover this year's shortfall. Not permitted under CCTS.</dd>
+      <dt>Price collar</dt>
+      <dd>The floor and ceiling the clearing price is not allowed to move outside of — ₹500 to ₹6,000/tCO2e in this simulation.</dd>
+      <dt>BEE — Bureau of Energy Efficiency</dt>
+      <dd>The scheme administrator: sets methodologies, benchmarks, and MRV protocols.</dd>
+      <dt>CERC — Central Electricity Regulatory Commission</dt>
+      <dd>Oversees CCC trading on the power exchanges.</dd>
+      <dt>MRV</dt>
+      <dd>Monitoring, Reporting and Verification — the annual emissions-reporting and third-party-verification cycle every obligated entity goes through.</dd>
+    </dl>
+
+    <h2 id="honesty">11. What's real vs. illustrative</h2>
+    <div class="callout warn">
+      <span class="c-label">Read this before citing any number from the game</span>
+      <p>This simulator is built for gameplay and intuition, not for policy analysis. Treat every number in it as illustrative unless stated otherwise here.</p>
+    </div>
+    <p><strong>Grounded in the real scheme (as notified through February 2026):</strong></p>
+    <ul>
+      <li>The overall mechanism design — intensity-based baseline-and-credit, unlimited banking, no borrowing, 2× penalty, the two-tier compliance/offset structure.</li>
+      <li>The nine covered sectors and the FY2025-26 / FY2026-27 compliance period structure.</li>
+      <li>Disclosed sector reduction ranges for <strong>Aluminium, Cement, Chlor-Alkali, and Pulp & Paper</strong> — these are the actual notified ranges.</li>
+    </ul>
+    <p><strong>Illustrative, built for a playable game:</strong></p>
+    <ul>
+      <li>Reduction targets for the other five sectors (Iron & Steel, Fertilizer, Petroleum Refining, Petrochemicals, Textiles) are interpolated within the disclosed overall envelope, not official BEE figures — flagged as "(illustrative)" wherever they appear.</li>
+      <li>Every company's baseline intensity, output volume, production margin, and abatement cost curve are procedurally generated for gameplay balance, not sourced from real company disclosures.</li>
+      <li>Targets in this simulator are computed by applying each sector's cumulative reduction percentage to each company's own baseline. The real CCTS sets entity-specific targets through a more detailed BEE process — this is a simplification.</li>
+      <li>The ₹500–₹6,000/tCO2e price collar is a plausible illustrative range, not a published number — CCTS has stated a collar is planned but has not (as of this deck) published its bounds.</li>
+    </ul>
+    <p>If you have real marginal abatement cost data for specific companies, it can be substituted in for the procedural generator — ask for it to be added.</p>
+
+    <a class="btn" href="index.html">← Back to the simulator</a>
+    <p class="footline">CCTS Carbon Market Simulator — a solo/AI-counterpart trading simulation of India's Carbon Credit Trading Scheme, modeled on the framework as publicly notified through February 2026.</p>
+  </article>
+</main>
