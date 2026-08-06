@@ -293,11 +293,12 @@
 
   /* ---------- entity generation ---------- */
 
-  function makeMeasures(ownBaseline, archetype) {
+  function makeMeasures(ownBaseline, archetype, variance) {
+    variance = variance == null ? 0.1 : variance;
     var measures = [];
     for (var i = 0; i < 4; i++) {
-      var fraction = MEASURE_FRACTION_TIERS[i] * archetype.potentialMult * rnd(0.9, 1.1);
-      var costPerT = MEASURE_COST_TIERS[i] * archetype.costMult * rnd(0.9, 1.1);
+      var fraction = MEASURE_FRACTION_TIERS[i] * archetype.potentialMult * rnd(1 - variance, 1 + variance);
+      var costPerT = MEASURE_COST_TIERS[i] * archetype.costMult * rnd(1 - variance, 1 + variance);
       var reductionPerUnit = fraction * ownBaseline;
       measures.push({
         label: ["Efficiency Retrofit", "Fuel/Process Switch", "Advanced Capture", "Deep Process Redesign"][i],
@@ -308,11 +309,11 @@
     return measures;
   }
 
-  function generateCompany(sector, archetype, isPlayer, strategy) {
+  function generateCompany(sector, archetype, isPlayer, strategy, variance, idOverride) {
     var ownBaseline = sector.baseline * archetype.baselineMult * rnd(0.95, 1.05);
     var output = Math.round(rnd(sector.outMin, sector.outMax));
     return {
-      id: sector.id,
+      id: idOverride || sector.id,
       sectorId: sector.id,
       sectorName: sector.name,
       unit: sector.unit,
@@ -324,7 +325,7 @@
       baselineIntensity: ownBaseline,
       output: output,
       margin: sector.margin,
-      measures: makeMeasures(ownBaseline, archetype),
+      measures: makeMeasures(ownBaseline, archetype, variance),
       activatedCount: 0,
       bank: 0,
       totalProfit: 0,
@@ -378,12 +379,17 @@
   }
 
   function botChooseOrder(company, surplusDeficit, priceGuess) {
+    // Per-firm price jitter: without it every firm in a strategy bucket names the exact
+    // same price, so an auction's clearing price collapses to one of a handful of fixed
+    // multiples of priceGuess — fine for a single solo-mode opponent mix, but it flattens
+    // the Monte Carlo simulator's price band to a near-flat line across trials.
+    var jitter = rnd(0.88, 1.12);
     if (surplusDeficit > 0) {
       var sellQty, minPrice;
       if (company.strategy === "banker") { sellQty = surplusDeficit * 0.35; minPrice = priceGuess * 1.15; }
       else if (company.strategy === "frontloader") { sellQty = surplusDeficit * 0.9; minPrice = priceGuess * 0.85; }
       else { sellQty = surplusDeficit * 0.7; minPrice = priceGuess * 0.95; }
-      return { side: "sell", qty: sellQty, limitPrice: clamp(minPrice, PRICE_FLOOR, PRICE_CEIL) };
+      return { side: "sell", qty: sellQty, limitPrice: clamp(minPrice * jitter, PRICE_FLOOR, PRICE_CEIL) };
     } else if (surplusDeficit < 0) {
       var shortfall = -surplusDeficit;
       var afterBank = Math.max(0, shortfall - company.bank);
@@ -392,7 +398,7 @@
       if (company.strategy === "laggard_payer") { buyQty = afterBank * 0.3; maxPrice = priceGuess * 0.7; }
       else if (company.strategy === "banker") { buyQty = afterBank * 0.5; maxPrice = priceGuess * 0.9; }
       else { buyQty = afterBank * 0.85; maxPrice = priceGuess * 1.2; }
-      return { side: "buy", qty: buyQty, limitPrice: clamp(maxPrice, PRICE_FLOOR, PRICE_CEIL) };
+      return { side: "buy", qty: buyQty, limitPrice: clamp(maxPrice * jitter, PRICE_FLOOR, PRICE_CEIL) };
     }
     return null;
   }
@@ -405,12 +411,26 @@
     if (!bids.length || !asks.length) {
       return { clearingPrice: clamp(priorPrice, PRICE_FLOOR, PRICE_CEIL), fills: {}, matchedTotal: 0, bids: bids, asks: asks };
     }
+    // Cumulative qty prefix sums: bids sorted desc by price, asks sorted asc by price.
+    var bidCum = [], askCum = [], acc = 0;
+    for (var bi = 0; bi < bids.length; bi++) { acc += bids[bi].qty; bidCum.push(acc); }
+    acc = 0;
+    for (var ai = 0; ai < asks.length; ai++) { acc += asks[ai].qty; askCum.push(acc); }
+    function demandAt(p) {
+      // largest index where bids[idx].limitPrice >= p (bids sorted desc -> that prefix is contiguous from 0)
+      var lo = 0, hi = bids.length - 1, ans = -1;
+      while (lo <= hi) { var mid = (lo + hi) >> 1; if (bids[mid].limitPrice >= p) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+      return ans >= 0 ? bidCum[ans] : 0;
+    }
+    function supplyAt(p) {
+      var lo = 0, hi = asks.length - 1, ans = -1;
+      while (lo <= hi) { var mid = (lo + hi) >> 1; if (asks[mid].limitPrice <= p) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+      return ans >= 0 ? askCum[ans] : 0;
+    }
     var bestPrice = null, bestQty = -1;
     asks.forEach(function (a) {
       var p = a.limitPrice;
-      var demandQty = bids.filter(function (b) { return b.limitPrice >= p; }).reduce(function (s, b) { return s + b.qty; }, 0);
-      var supplyQty = asks.filter(function (x) { return x.limitPrice <= p; }).reduce(function (s, x) { return s + x.qty; }, 0);
-      var matched = Math.min(demandQty, supplyQty);
+      var matched = Math.min(demandAt(p), supplyAt(p));
       if (matched > bestQty) { bestQty = matched; bestPrice = p; }
     });
     if (bestPrice === null || bestQty <= 0) {
@@ -435,6 +455,147 @@
     return { clearingPrice: clearingPrice, fills: fills, matchedTotal: bestQty, bids: bids, asks: asks };
   }
 
+  /* ---------- batch / Monte Carlo simulator ---------- */
+
+  function weightedPick(items, weights) {
+    var total = 0;
+    for (var i = 0; i < weights.length; i++) total += weights[i];
+    if (total <= 0) return items[Math.floor(Math.random() * items.length)];
+    var r = Math.random() * total, acc = 0;
+    for (i = 0; i < items.length; i++) { acc += weights[i]; if (r <= acc) return items[i]; }
+    return items[items.length - 1];
+  }
+
+  function percentile(sortedArr, p) {
+    if (!sortedArr.length) return 0;
+    var idx = clamp(Math.round((p / 100) * (sortedArr.length - 1)), 0, sortedArr.length - 1);
+    return sortedArr[idx];
+  }
+
+  function runSimTrial(cfg) {
+    var firms = [];
+    SECTORS.forEach(function (sector) {
+      for (var i = 0; i < cfg.firmsPerSector; i++) {
+        var archetype = weightedPick(ARCHETYPES, cfg.archetypeWeights);
+        var strategy = weightedPick(BOT_STRATEGIES, cfg.strategyWeights);
+        firms.push(generateCompany(sector, archetype, false, strategy, cfg.variance, sector.id + "-" + i));
+      }
+    });
+
+    var priceHistory = [];
+    var yearMetrics = [];
+
+    for (var year = 1; year <= 2; year++) {
+      var priceGuess = priceHistory.length ? priceHistory[priceHistory.length - 1] : (PRICE_FLOOR + PRICE_CEIL) / 2;
+      var abate = {};
+      firms.forEach(function (c) {
+        var sector = sectorById(c.sectorId);
+        var newCount = botChooseAbatement(c, sector, year, priceGuess);
+        var target = targetIntensity(c, sector, year);
+        var reduced = cumulativeReduction(c, newCount);
+        var actualIntensity = c.baselineIntensity - reduced;
+        var emissions = actualIntensity * c.output;
+        var allowance = target * c.output;
+        c.activatedCount = newCount;
+        abate[c.id] = { actualIntensity: actualIntensity, target: target, emissions: emissions, allowance: allowance, surplusDeficit: allowance - emissions };
+      });
+
+      var orders = [];
+      firms.forEach(function (c) {
+        var sd = abate[c.id].surplusDeficit;
+        var o = botChooseOrder(c, sd, priceGuess);
+        if (o && o.qty > 0.5) orders.push({ companyId: c.id, side: o.side, qty: o.qty, limitPrice: o.limitPrice });
+      });
+      var auction = clearAuction(orders, priceGuess);
+      priceHistory.push(auction.clearingPrice);
+
+      var m = {
+        year: year, price: auction.clearingPrice,
+        requiredAbatement: 0, actualAbatement: 0,
+        coveredByBank: 0, coveredByMarket: 0, penalizedTonnes: 0,
+        compliantCount: 0, firmCount: firms.length,
+        sectorStats: {}
+      };
+      SECTORS.forEach(function (s) { m.sectorStats[s.id] = { compliant: 0, total: 0, actualCut: 0, requiredCut: 0 }; });
+
+      firms.forEach(function (c) {
+        var ab = abate[c.id];
+        var sd = ab.surplusDeficit;
+        var filled = auction.fills[c.id] || 0;
+        var bankUsed = 0, bought = 0, sold = 0, penaltyTonnes = 0, bankedNow = 0;
+        if (sd >= 0) {
+          sold = filled;
+          bankedNow = sd - filled;
+          c.bank += bankedNow;
+        } else {
+          var shortfall = -sd;
+          bankUsed = Math.min(c.bank, shortfall);
+          c.bank -= bankUsed;
+          var remaining = shortfall - bankUsed;
+          bought = Math.min(filled, remaining);
+          var stillShort = remaining - bought;
+          if (stillShort > 0.01) penaltyTonnes = stillShort;
+        }
+        var req = (c.baselineIntensity - ab.target) * c.output;
+        var act = cumulativeReduction(c, c.activatedCount) * c.output;
+        m.requiredAbatement += req;
+        m.actualAbatement += act;
+        m.coveredByBank += bankUsed;
+        m.coveredByMarket += bought;
+        m.penalizedTonnes += penaltyTonnes;
+        var compliant = penaltyTonnes <= 0.01;
+        if (compliant) m.compliantCount++;
+        var ss = m.sectorStats[c.sectorId];
+        ss.total++; if (compliant) ss.compliant++;
+        ss.actualCut += act; ss.requiredCut += req;
+      });
+      yearMetrics.push(m);
+    }
+    return yearMetrics;
+  }
+
+  function runSimulation(cfg) {
+    var perYear = [[], []];
+    for (var t = 0; t < cfg.trials; t++) {
+      var ym = runSimTrial(cfg);
+      perYear[0].push(ym[0]);
+      perYear[1].push(ym[1]);
+    }
+    var result = { years: [], trials: cfg.trials };
+    perYear.forEach(function (trialsForYear) {
+      var prices = trialsForYear.map(function (m) { return m.price; }).sort(function (a, b) { return a - b; });
+      var complianceRates = trialsForYear.map(function (m) { return m.compliantCount / m.firmCount * 100; });
+      var reqTotal = trialsForYear.reduce(function (s, m) { return s + m.requiredAbatement; }, 0);
+      var actTotal = trialsForYear.reduce(function (s, m) { return s + m.actualAbatement; }, 0);
+      var bankTotal = trialsForYear.reduce(function (s, m) { return s + m.coveredByBank; }, 0);
+      var marketTotal = trialsForYear.reduce(function (s, m) { return s + m.coveredByMarket; }, 0);
+      var penaltyTotal = trialsForYear.reduce(function (s, m) { return s + m.penalizedTonnes; }, 0);
+      var deficitTotal = bankTotal + marketTotal + penaltyTotal;
+      var sectorAgg = {};
+      SECTORS.forEach(function (s) { sectorAgg[s.id] = { compliant: 0, total: 0, actualCut: 0, requiredCut: 0 }; });
+      trialsForYear.forEach(function (m) {
+        SECTORS.forEach(function (s) {
+          var ss = m.sectorStats[s.id];
+          sectorAgg[s.id].compliant += ss.compliant;
+          sectorAgg[s.id].total += ss.total;
+          sectorAgg[s.id].actualCut += ss.actualCut;
+          sectorAgg[s.id].requiredCut += ss.requiredCut;
+        });
+      });
+      result.years.push({
+        year: trialsForYear[0].year,
+        priceMedian: percentile(prices, 50), priceP10: percentile(prices, 10), priceP90: percentile(prices, 90),
+        complianceMean: complianceRates.reduce(function (s, v) { return s + v; }, 0) / complianceRates.length,
+        requiredAbatement: reqTotal / cfg.trials, actualAbatement: actTotal / cfg.trials,
+        bankShare: deficitTotal ? bankTotal / deficitTotal * 100 : 0,
+        marketShare: deficitTotal ? marketTotal / deficitTotal * 100 : 0,
+        penaltyShare: deficitTotal ? penaltyTotal / deficitTotal * 100 : 0,
+        sectorAgg: sectorAgg
+      });
+    });
+    return result;
+  }
+
   /* ---------- app state ---------- */
 
   var G = {
@@ -446,8 +607,18 @@
     yearData: {},
     draft: { sectorId: null, archetypeId: null },
     abateDraft: 0,
-    tradeDraft: { qty: 0, limitPrice: PRICE_FLOOR }
+    tradeDraft: { qty: 0, limitPrice: PRICE_FLOOR },
+    simConfig: {
+      firmsPerSector: 15,
+      archetypeWeights: [50, 50, 50],
+      strategyWeights: [50, 50, 50, 50],
+      varianceLabel: "medium",
+      trials: 50
+    },
+    simResult: null
   };
+
+  var VARIANCE_LEVELS = { low: 0.05, medium: 0.10, high: 0.25 };
 
   function sectorById(id) { return SECTORS.filter(function (s) { return s.id === id; })[0]; }
   function companyById(id) { return G.companies.filter(function (c) { return c.id === id; })[0]; }
@@ -571,6 +742,28 @@
     G.screen = "landing";
     G.draft = { sectorId: null, archetypeId: null };
     render();
+  }
+
+  function goToSimSetup() {
+    G.screen = "simsetup";
+    render();
+  }
+
+  function launchSimulation() {
+    G.screen = "simrunning";
+    render();
+    setTimeout(function () {
+      var cfg = {
+        firmsPerSector: G.simConfig.firmsPerSector,
+        archetypeWeights: G.simConfig.archetypeWeights,
+        strategyWeights: G.simConfig.strategyWeights,
+        variance: VARIANCE_LEVELS[G.simConfig.varianceLabel],
+        trials: G.simConfig.trials
+      };
+      G.simResult = runSimulation(cfg);
+      G.screen = "simresults";
+      render();
+    }, 30);
   }
 
   /* ---------- charts ---------- */
@@ -725,7 +918,7 @@
   function ticker() {
     var lastPrice = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : null;
     var yearLabel = G.year === 1 ? "FY 2025-26" : "FY 2026-27";
-    var phaseLabel = { landing: "Lobby", setup: "Registration", briefing: "Briefing", abatement: "Abatement Window", trading: "Trading Window", settlement: "Settlement", summary: "Compliance Period Closed" }[G.screen] || "";
+    var phaseLabel = { landing: "Lobby", setup: "Registration", briefing: "Briefing", abatement: "Abatement Window", trading: "Trading Window", settlement: "Settlement", summary: "Compliance Period Closed", simsetup: "Simulator Setup", simrunning: "Running Simulation", simresults: "Simulator Results" }[G.screen] || "";
     var html = '<div class="ticker">';
     html += '<span><span class="tk-label">Scheme</span><b>CCTS · Compliance Mechanism</b></span>';
     html += '<span class="tk-sep">│</span>';
@@ -757,6 +950,9 @@
       case "trading": return renderTrading();
       case "settlement": return renderSettlement();
       case "summary": return renderSummary();
+      case "simsetup": return renderSimSetup();
+      case "simrunning": return renderSimRunning();
+      case "simresults": return renderSimResults();
       default: return "";
     }
   }
@@ -778,7 +974,10 @@
         '</div>' +
       '</div>' +
       '<div class="row">' +
-        '<div class="card" style="flex:1;min-width:240px;opacity:0.6;"><h3 style="margin:0;">Market Simulator</h3><p style="margin:0.25rem 0 0;">Batch-forecast market outcomes under configurable behavioral mixes. Coming next.</p></div>' +
+        '<div class="card stack" style="flex:1;min-width:280px;">' +
+          '<div><h3 style="margin:0;">Market Simulator</h3><p style="margin:0.25rem 0 0;">Batch-forecast market outcomes across hundreds of simulated firms and trials under a behavioral mix you configure. No manual play — set parameters, run, read the forecast.</p></div>' +
+          '<button class="btn btn-ghost" data-action="goto-simsetup" style="align-self:flex-start;">Configure & Run →</button>' +
+        '</div>' +
         '<div class="card" style="flex:1;min-width:240px;opacity:0.6;"><h3 style="margin:0;">Live Multiplayer</h3><p style="margin:0.25rem 0 0;">Gather real operators, one per sector, on a shared exchange. Coming next.</p></div>' +
       '</div>' +
       '<p class="foot-note">Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali and Pulp & Paper are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Company-level financials are illustrative.</p>' +
@@ -1008,6 +1207,203 @@
     return html;
   }
 
+  /* ---------- render: market simulator ---------- */
+
+  function weightPct(weights, i) {
+    var total = weights.reduce(function (s, w) { return s + w; }, 0);
+    return total > 0 ? (weights[i] / total) * 100 : 0;
+  }
+
+  function weightSliderRow(kind, i, name, weights) {
+    var pctVal = weightPct(weights, i);
+    return '<div class="row" style="align-items:center;gap:0.75rem;">' +
+      '<span style="width:150px;font-size:13px;color:var(--ink-2);flex-shrink:0;">' + name + '</span>' +
+      '<input type="range" min="0" max="100" step="5" value="' + weights[i] + '" data-kind="' + kind + '" data-idx="' + i + '" class="sim-weight" style="flex:1;" />' +
+      '<span class="muted" style="width:42px;text-align:right;font-family:var(--mono);" id="' + kind + '-pct-' + i + '">' + Math.round(pctVal) + '%</span>' +
+    '</div>';
+  }
+
+  function renderSimSetup() {
+    var cfg = G.simConfig;
+    var totalOperators = cfg.firmsPerSector * SECTORS.length;
+    var html = '<div class="wrap-narrow stack">' +
+      '<div class="eyebrow">Market Simulator</div>' +
+      '<h2>Configure the forecast</h2>' +
+      '<p>No manual play here — set the size and behavioral mix of the simulated market, then run. Every trial regenerates a fresh population of firms across all nine sectors and plays out both compliance years independently; results are aggregated across trials.</p>' +
+
+      '<div class="card stack">' +
+        '<h3 style="margin:0;">Market size</h3>' +
+        '<div class="row" style="align-items:center;gap:0.75rem;">' +
+          '<span style="width:150px;font-size:13px;color:var(--ink-2);flex-shrink:0;">Firms per sector</span>' +
+          '<input type="range" min="5" max="50" step="5" value="' + cfg.firmsPerSector + '" id="sim-firms" style="flex:1;" />' +
+          '<span class="muted" style="width:42px;text-align:right;font-family:var(--mono);" id="sim-firms-val">' + cfg.firmsPerSector + '</span>' +
+        '</div>' +
+        '<p class="muted" style="margin:0;" id="sim-total-operators">' + moneyInt.format(totalOperators) + ' operators simulated per trial, across all 9 sectors.</p>' +
+      '</div>' +
+
+      '<div class="card stack">' +
+        '<h3 style="margin:0;">Starting-posture mix</h3>' +
+        '<p style="margin:0;font-size:12.5px;">Relative weight, not a hard percentage — every trial draws each firm\'s posture from these odds independently.</p>' +
+        ARCHETYPES.map(function (a, i) { return weightSliderRow("arche", i, a.name, cfg.archetypeWeights); }).join("") +
+      '</div>' +
+
+      '<div class="card stack">' +
+        '<h3 style="margin:0;">Trading-behavior mix</h3>' +
+        '<p style="margin:0;font-size:12.5px;">How the simulated operators decide abatement and set prices.</p>' +
+        BOT_STRATEGIES.map(function (s, i) { return weightSliderRow("strat", i, BOT_STRATEGY_LABEL[s], cfg.strategyWeights); }).join("") +
+      '</div>' +
+
+      '<div class="card stack">' +
+        '<h3 style="margin:0;">Abatement cost uncertainty</h3>' +
+        '<div class="archetype-grid">' +
+          ["low", "medium", "high"].map(function (v) {
+            var sel = cfg.varianceLabel === v;
+            var desc = v === "low" ? "±5% — cost curves are fairly predictable" : v === "medium" ? "±10% — moderate real-world spread" : "±25% — wide uncertainty in abatement costs";
+            return '<button class="arche-tile' + (sel ? " selected" : "") + '" data-action="pick-variance" data-id="' + v + '">' +
+              '<div class="at-name">' + v.charAt(0).toUpperCase() + v.slice(1) + '</div><div class="at-desc">' + desc + '</div>' +
+            '</button>';
+          }).join("") +
+        '</div>' +
+      '</div>' +
+
+      '<div class="card stack">' +
+        '<h3 style="margin:0;">Monte Carlo trials</h3>' +
+        '<div class="row" style="align-items:center;gap:0.75rem;">' +
+          '<span style="width:150px;font-size:13px;color:var(--ink-2);flex-shrink:0;">Trials to run</span>' +
+          '<input type="range" min="10" max="300" step="10" value="' + cfg.trials + '" id="sim-trials" style="flex:1;" />' +
+          '<span class="muted" style="width:42px;text-align:right;font-family:var(--mono);" id="sim-trials-val">' + cfg.trials + '</span>' +
+        '</div>' +
+        '<p class="muted" style="margin:0;">More trials narrow the forecast band at the cost of a slightly longer run.</p>' +
+      '</div>' +
+
+      '<div class="row" style="justify-content:space-between;">' +
+        '<button class="btn btn-ghost" data-action="back-landing">← Back</button>' +
+        '<button class="btn" data-action="run-simulation">Run Simulation →</button>' +
+      '</div>' +
+    '</div>';
+    return html;
+  }
+
+  function renderSimRunning() {
+    var cfg = G.simConfig;
+    return '<div class="wrap-narrow stack" style="text-align:center;padding-top:3rem;">' +
+      '<div class="eyebrow">Market Simulator</div>' +
+      '<h2>Running ' + cfg.trials + ' trials…</h2>' +
+      '<p>Simulating ' + moneyInt.format(cfg.firmsPerSector * SECTORS.length) + ' operators across two compliance years, ' + cfg.trials + ' times over.</p>' +
+    '</div>';
+  }
+
+  function bandPriceChart(years, w) {
+    w = w || 560;
+    var h = 220;
+    var padL = 56, padR = 20, padT = 32, padB = 46;
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    var maxP = Math.max(PRICE_CEIL, 1) * 1.05, minP = 0;
+    var xScale = function (i) { return years.length > 1 ? padL + (i / (years.length - 1)) * innerW : padL + innerW / 2; };
+    var yScale = function (p) { return padT + innerH - ((p - minP) / (maxP - minP)) * innerH; };
+    var svg = svgOpen(w, h);
+    for (var i = 0; i <= 4; i++) {
+      var gy = padT + (innerH / 4) * i;
+      svg += '<line x1="' + padL + '" y1="' + gy + '" x2="' + (w - padR) + '" y2="' + gy + '" stroke="var(--grid)" stroke-width="1" />';
+    }
+    var bandPath = "M" + xScale(0) + "," + yScale(years[0].priceP10);
+    years.forEach(function (y, idx) { bandPath += " L" + xScale(idx) + "," + yScale(y.priceP10); });
+    for (i = years.length - 1; i >= 0; i--) bandPath += " L" + xScale(i) + "," + yScale(years[i].priceP90);
+    bandPath += " Z";
+    svg += '<path d="' + bandPath + '" fill="var(--price)" opacity="0.14" />';
+    var line = years.map(function (y, idx) { return (idx === 0 ? "M" : "L") + xScale(idx) + "," + yScale(y.priceMedian); }).join(" ");
+    svg += '<path d="' + line + '" fill="none" stroke="var(--price)" stroke-width="2.5" stroke-linecap="round" />';
+    years.forEach(function (y, idx) {
+      svg += '<circle cx="' + xScale(idx) + '" cy="' + yScale(y.priceMedian) + '" r="4.5" fill="var(--price)" />';
+      // Anchored to the band's own top/bottom (not the median dot) so the two labels
+      // stay clear of each other even when P10-P90 collapses to a near-zero-width band.
+      svg += '<text x="' + xScale(idx) + '" y="' + (yScale(y.priceP90) - 12) + '" font-size="11.5" text-anchor="middle" font-weight="700" fill="var(--ink)">₹' + moneyInt.format(Math.round(y.priceMedian)) + ' median</text>';
+      svg += '<text x="' + xScale(idx) + '" y="' + (yScale(y.priceP10) + 18) + '" font-size="10" text-anchor="middle" fill="var(--muted)">P10 ₹' + moneyInt.format(Math.round(y.priceP10)) + ' – P90 ₹' + moneyInt.format(Math.round(y.priceP90)) + '</text>';
+      svg += '<text x="' + xScale(idx) + '" y="' + (h - 8) + '" font-size="10.5" text-anchor="middle" fill="var(--muted)">FY 20' + (24 + y.year) + '-' + (25 + y.year) + '</text>';
+    });
+    svg += '<text x="' + padL + '" y="' + (padT - 6) + '" font-size="10" fill="var(--muted)">₹/tCO2e</text>';
+    svg += "</svg>";
+    return svg;
+  }
+
+  function coverageBar(y, w) {
+    w = w || 520;
+    var h = 40;
+    var gap = 2;
+    var padL = 4, padR = 4;
+    var innerW = w - padL - padR - gap * 2;
+    var total = y.bankShare + y.marketShare + y.penaltyShare || 1;
+    var bw = (y.bankShare / total) * innerW, mw = (y.marketShare / total) * innerW, pw = (y.penaltyShare / total) * innerW;
+    var svg = svgOpen(w, h);
+    var x = padL;
+    if (bw > 0) { svg += '<rect x="' + x + '" y="6" width="' + bw + '" height="20" rx="3" fill="var(--good)" />'; x += bw + gap; }
+    if (mw > 0) { svg += '<rect x="' + x + '" y="6" width="' + mw + '" height="20" rx="3" fill="var(--price)" />'; x += mw + gap; }
+    if (pw > 0) { svg += '<rect x="' + x + '" y="6" width="' + pw + '" height="20" rx="3" fill="var(--critical)" />'; }
+    svg += "</svg>";
+    return '<div>' +
+      '<div style="font-size:12px;color:var(--ink-2);margin-bottom:0.3rem;">FY 20' + (24 + y.year) + '-' + (25 + y.year) + '</div>' +
+      svg +
+      '<div class="row" style="gap:1.1rem;font-size:11.5px;color:var(--ink-2);margin-top:0.35rem;">' +
+        '<span><svg width="10" height="10"><rect width="10" height="10" rx="2" fill="var(--good)"/></svg> Bank draw ' + num2.format(y.bankShare) + '%</span>' +
+        '<span><svg width="10" height="10"><rect width="10" height="10" rx="2" fill="var(--price)"/></svg> Bought on exchange ' + num2.format(y.marketShare) + '%</span>' +
+        '<span><svg width="10" height="10"><rect width="10" height="10" rx="2" fill="var(--critical)"/></svg> Penalized ' + num2.format(y.penaltyShare) + '%</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function complianceStatColor(rate) { return rate >= 80 ? "var(--good)" : rate >= 50 ? "var(--warning)" : "var(--critical)"; }
+
+  function renderSimResults() {
+    var res = G.simResult;
+    var cfg = G.simConfig;
+    var html = '<div class="wrap stack">' +
+      '<div class="eyebrow">Market Simulator · ' + res.trials + ' trials · ' + moneyInt.format(cfg.firmsPerSector * SECTORS.length) + ' operators/trial</div>' +
+      '<h1>Forecast results</h1>' +
+
+      '<div class="chart-card"><h3 style="margin-top:0;">CCC clearing price — median, with 10th–90th percentile band</h3>' + bandPriceChart(res.years) + '</div>' +
+
+      '<div class="row">' +
+        res.years.map(function (y) {
+          return '<div class="card" style="flex:1;min-width:220px;"><div class="kpi">' +
+            '<span class="kv" style="color:' + complianceStatColor(y.complianceMean) + '">' + num2.format(y.complianceMean) + '%</span>' +
+            '<span class="kl">FY 20' + (24 + y.year) + '-' + (25 + y.year) + ' Compliance Rate</span></div></div>';
+        }).join("") +
+        res.years.map(function (y) {
+          var ratio = y.requiredAbatement ? (y.actualAbatement / y.requiredAbatement) * 100 : 0;
+          return '<div class="card" style="flex:1;min-width:220px;"><div class="kpi">' +
+            '<span class="kv">' + num2.format(ratio) + '%</span>' +
+            '<span class="kl">FY 20' + (24 + y.year) + '-' + (25 + y.year) + ' Abatement Delivered vs. Required</span></div></div>';
+        }).join("") +
+      '</div>' +
+
+      '<div class="card stack"><h3 style="margin:0;">How covered shortfalls were closed</h3>' +
+        '<p style="margin:0;">Of all deficit tonnes across every simulated operator, the share resolved by drawing the bank, buying on the exchange, or absorbing the 2× penalty.</p>' +
+        '<div class="row" style="gap:2rem;flex-wrap:wrap;">' + res.years.map(function (y) { return '<div style="flex:1;min-width:240px;">' + coverageBar(y) + '</div>'; }).join("") + '</div>' +
+      '</div>' +
+
+      '<div class="card"><h3 style="margin-top:0;">Sector breakdown</h3>' +
+      '<div class="table-wrap"><table><thead><tr><th>Sector</th><th class="num">FY26 Compliant</th><th class="num">FY27 Compliant</th><th class="num">FY26 Abatement</th><th class="num">FY27 Abatement</th></tr></thead><tbody>' +
+        SECTORS.map(function (s) {
+          var y1 = res.years[0].sectorAgg[s.id], y2 = res.years[1].sectorAgg[s.id];
+          var c1 = y1.total ? (y1.compliant / y1.total) * 100 : 0, c2 = y2.total ? (y2.compliant / y2.total) * 100 : 0;
+          var a1 = y1.requiredCut ? (y1.actualCut / y1.requiredCut) * 100 : 0, a2 = y2.requiredCut ? (y2.actualCut / y2.requiredCut) * 100 : 0;
+          return '<tr><td><strong>' + s.name + '</strong></td>' +
+            '<td class="num" style="color:' + complianceStatColor(c1) + '">' + num2.format(c1) + '%</td>' +
+            '<td class="num" style="color:' + complianceStatColor(c2) + '">' + num2.format(c2) + '%</td>' +
+            '<td class="num">' + num2.format(a1) + '%</td>' +
+            '<td class="num">' + num2.format(a2) + '%</td></tr>';
+        }).join("") +
+      '</tbody></table></div></div>' +
+
+      '<div class="row" style="justify-content:space-between;">' +
+        '<button class="btn btn-ghost" data-action="goto-simsetup">← Adjust Parameters</button>' +
+        '<button class="btn" data-action="run-simulation">Run Again →</button>' +
+      '</div>' +
+      '<p class="foot-note">Every trial regenerates a fresh, randomized population of firms from the configured weights — re-running with identical settings will produce a similar but not identical forecast. Widen the trial count to narrow that variance.</p>' +
+    '</div>';
+    return html;
+  }
+
   /* ---------- events ---------- */
 
   function bindEvents() {
@@ -1026,6 +1422,9 @@
       else if (action === "submit-trading") { submitTrading(); }
       else if (action === "next-year") { nextYear(); }
       else if (action === "restart") { restart(); }
+      else if (action === "goto-simsetup") { goToSimSetup(); }
+      else if (action === "run-simulation") { launchSimulation(); }
+      else if (action === "pick-variance") { G.simConfig.varianceLabel = el.getAttribute("data-id"); render(); }
     };
     var slider = document.getElementById("abate-slider");
     if (slider) {
@@ -1048,6 +1447,35 @@
     var priceEl = document.getElementById("trade-price");
     if (qtyEl) qtyEl.oninput = function () { G.tradeDraft.qty = parseFloat(qtyEl.value) || 0; };
     if (priceEl) priceEl.oninput = function () { G.tradeDraft.limitPrice = parseFloat(priceEl.value) || PRICE_FLOOR; };
+
+    var firmsEl = document.getElementById("sim-firms");
+    if (firmsEl) {
+      firmsEl.oninput = function () {
+        G.simConfig.firmsPerSector = parseInt(firmsEl.value, 10);
+        document.getElementById("sim-firms-val").textContent = G.simConfig.firmsPerSector;
+        document.getElementById("sim-total-operators").textContent = moneyInt.format(G.simConfig.firmsPerSector * SECTORS.length) + " operators simulated per trial, across all 9 sectors.";
+      };
+    }
+    var trialsEl = document.getElementById("sim-trials");
+    if (trialsEl) {
+      trialsEl.oninput = function () {
+        G.simConfig.trials = parseInt(trialsEl.value, 10);
+        document.getElementById("sim-trials-val").textContent = G.simConfig.trials;
+      };
+    }
+    var weightEls = document.querySelectorAll(".sim-weight");
+    weightEls.forEach(function (el) {
+      el.oninput = function () {
+        var kind = el.getAttribute("data-kind");
+        var idx = parseInt(el.getAttribute("data-idx"), 10);
+        var weights = kind === "arche" ? G.simConfig.archetypeWeights : G.simConfig.strategyWeights;
+        weights[idx] = parseInt(el.value, 10);
+        weights.forEach(function (w, i) {
+          var span = document.getElementById(kind + "-pct-" + i);
+          if (span) span.textContent = Math.round(weightPct(weights, i)) + "%";
+        });
+      };
+    });
   }
 
   render();

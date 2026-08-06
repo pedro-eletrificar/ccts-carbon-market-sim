@@ -147,6 +147,7 @@
         <li><a href="#strategy">9. Strategy notes</a></li>
         <li><a href="#glossary">10. Glossary</a></li>
         <li><a href="#honesty">11. What's real vs. illustrative</a></li>
+        <li><a href="#simulator">12. The Market Simulator mode</a></li>
       </ol>
     </div>
 
@@ -278,6 +279,34 @@
       <li>The ₹500–₹6,000/tCO2e price collar is a plausible illustrative range, not a published number — CCTS has stated a collar is planned but has not (as of this deck) published its bounds.</li>
     </ul>
     <p>If you have real marginal abatement cost data for specific companies, it can be substituted in for the procedural generator — ask for it to be added.</p>
+
+    <h2 id="simulator">12. The Market Simulator mode</h2>
+    <p>Where Solo vs. AI Operators has you playing one company by hand, the <strong>Market Simulator</strong> has no manual play at all — you configure the shape of the market and it runs the whole thing many times over, reporting a forecast rather than a single outcome.</p>
+    <h3>What you configure</h3>
+    <dl>
+      <dt>Firms per sector</dt>
+      <dd>How many simulated operators populate each of the nine sectors. Every trial regenerates the entire population from scratch — a fresh random draw of baselines, output volumes, and cost curves each time.</dd>
+      <dt>Starting-posture mix</dt>
+      <dd>Relative weight given to Efficient Incumbent, Mid-Pack Operator, and Legacy Laggard. These are odds, not fixed percentages — a weight of 100 against two weights of 50 means that posture is drawn roughly twice as often, not that it's exactly half the market.</dd>
+      <dt>Trading-behavior mix</dt>
+      <dd>Relative weight given to the four bot strategies described in section 8. This is what shapes market dynamics most: a market weighted heavily toward Laggard Penalty-Payers will show more uncovered deficits and a higher penalty share; one weighted toward Bankers will show more banked surplus and firmer prices.</dd>
+      <dt>Abatement cost uncertainty</dt>
+      <dd>How much each measure's cost and reduction potential is allowed to randomly vary firm-to-firm (±5% / ±10% / ±25%). Higher uncertainty widens the forecast band.</dd>
+      <dt>Monte Carlo trials</dt>
+      <dd>How many independent runs to average over. More trials narrow the forecast band around a more stable estimate, at the cost of a slightly longer run — the whole simulator runs client-side in your browser, so even the largest setting (300 trials × 50 firms/sector) finishes in a few seconds.</dd>
+    </dl>
+    <h3>Reading the results</h3>
+    <ul>
+      <li><strong>CCC clearing price</strong> is shown as a median with a 10th–90th percentile band across all trials — the band is the forecast's honest uncertainty, not noise to ignore. A very narrow band means the configuration you chose reliably produces one outcome; a wide band means the market's price is genuinely sensitive to how the population happens to be drawn.</li>
+      <li><strong>Compliance rate</strong> is the average share of simulated firms that closed the year with zero uncovered shortfall.</li>
+      <li><strong>Abatement delivered vs. required</strong> compares what the simulated market actually cut to what its targets implied — over 100% means the market over-complied in aggregate (which can still coexist with many individual firms being penalized, if abatement is concentrated among a few operators).</li>
+      <li><strong>How covered shortfalls were closed</strong> breaks every deficit tonne, market-wide, into what fraction was covered by drawing the bank, buying on the exchange, or absorbing the 2× penalty.</li>
+      <li><strong>Sector breakdown</strong> shows compliance and abatement ratios per sector — useful for spotting which sectors' targets are least achievable under the mix you configured (Pulp & Paper's disclosed FY27 target, a 15% cumulative cut, tends to be the hardest to hit).</li>
+    </ul>
+    <div class="callout">
+      <span class="c-label">This is a forecasting toy, not a market prediction</span>
+      <p>The output is only as credible as the behavioral weights and cost curves you put in, and the cost curves are procedurally generated (see section 11). Use it to build intuition for how a behavioral mix shapes price and compliance outcomes, not as a prediction of what the real CCTS market will do.</p>
+    </div>
 
     <a class="btn" href="index.html">← Back to the simulator</a>
     <p class="footline">CCTS Carbon Market Simulator — a solo/AI-counterpart trading simulation of India's Carbon Credit Trading Scheme, modeled on the framework as publicly notified through February 2026.</p>
