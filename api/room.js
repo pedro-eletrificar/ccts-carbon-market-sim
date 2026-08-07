@@ -93,6 +93,18 @@ function makeDecideAbatement(state) {
   };
 }
 
+function makeDecideProduction(state) {
+  return function (company, sector, year, scenario) {
+    var seat = state.seats[company.sectorId];
+    if (seat.isHuman) {
+      var submitted = state.submissions.production[company.sectorId];
+      if (submitted != null) return engine.clamp(Number(submitted), 0.5, 1.5);
+      return 1;
+    }
+    return engine.botChooseProduction(company, sector, year, scenario);
+  };
+}
+
 function makeDecideOrder(state) {
   return function (company, surplusDeficit, priceGuess) {
     var seat = state.seats[company.sectorId];
@@ -128,7 +140,7 @@ async function actionCreate(req, res) {
     year: 1,
     seats: emptySeats(),
     companies: {},
-    submissions: { abatement: {}, trading: {} },
+    submissions: { abatement: {}, production: {}, trading: {} },
     priceHistory: [],
     yearData: {}
   };
@@ -166,6 +178,7 @@ async function actionStartGame(req, res, body) {
   });
   state.phase = "briefing";
   state.year = 1;
+  state.yearData = { 1: { scenario: engine.pickScenario() } };
   await writeRoom(state);
   res.status(200).json({ state: publicState(state) });
 }
@@ -179,6 +192,11 @@ async function actionSubmitAbatement(req, res, body) {
   var count = Math.round(Number(body.activatedCount));
   if (!(count >= 0 && count <= 4)) return badRequest(res, "activatedCount must be 0-4");
   state.submissions.abatement[body.seat] = count;
+  if (body.productionLevel != null) {
+    var level = Number(body.productionLevel);
+    if (!(level >= 0.5 && level <= 1.5)) return badRequest(res, "productionLevel must be 0.5-1.5");
+    state.submissions.production[body.seat] = level;
+  }
   await writeRoom(state);
   res.status(200).json({ state: publicState(state) });
 }
@@ -207,8 +225,9 @@ async function actionAdvancePhase(req, res, body) {
   if (state.phase === "briefing") {
     state.phase = "abatement";
     state.submissions.abatement = {};
+    state.submissions.production = {};
   } else if (state.phase === "abatement") {
-    var abate = engine.resolveAbatement(companies, state.year, priorPrice(state), makeDecideAbatement(state));
+    var abate = engine.resolveAbatement(companies, state.year, priorPrice(state), makeDecideAbatement(state), makeDecideProduction(state), yd.scenario);
     yd.abate = abate;
     state.phase = "trading";
     state.submissions.trading = {};
@@ -224,6 +243,7 @@ async function actionAdvancePhase(req, res, body) {
     if (state.year < engine.TOTAL_YEARS) {
       state.year++;
       state.phase = "briefing";
+      state.yearData[state.year] = { scenario: engine.pickScenario() };
     } else {
       state.phase = "summary";
     }

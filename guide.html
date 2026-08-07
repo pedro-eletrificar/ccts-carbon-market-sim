@@ -155,14 +155,15 @@
         <li><a href="#quickstart">2. Quick start</a></li>
         <li><a href="#company">3. Your company</a></li>
         <li><a href="#year">4. The four phases of a compliance year</a></li>
-        <li><a href="#abatement">5. Reading your abatement cost curve</a></li>
-        <li><a href="#exchange">6. How the exchange clears a price</a></li>
-        <li><a href="#settlement">7. Settlement and your score</a></li>
-        <li><a href="#operators">8. The other eight operators</a></li>
-        <li><a href="#strategy">9. Strategy notes</a></li>
-        <li><a href="#glossary">10. Glossary</a></li>
-        <li><a href="#honesty">11. What's real vs. illustrative</a></li>
-        <li><a href="#simulator">12. The Market Simulator mode</a></li>
+        <li><a href="#demand">5. Demand scenarios and production planning</a></li>
+        <li><a href="#abatement">6. Reading your abatement cost curve</a></li>
+        <li><a href="#exchange">7. How the exchange clears a price</a></li>
+        <li><a href="#settlement">8. Settlement and your score</a></li>
+        <li><a href="#operators">9. The other eight operators</a></li>
+        <li><a href="#strategy">10. Strategy notes</a></li>
+        <li><a href="#glossary">11. Glossary</a></li>
+        <li><a href="#honesty">12. What's real vs. illustrative</a></li>
+        <li><a href="#simulator">13. The Market Simulator mode</a></li>
       </ol>
     </div>
 
@@ -197,13 +198,23 @@
     <p>Each of the three compliance years (FY 2025-26, FY 2026-27, and FY 2027-28) runs through the same four phases:</p>
     <div class="phase-grid">
       <div class="phase-card"><span class="p-num">01</span><h4>Target Briefing</h4><p>BEE notifies your sector's intensity trajectory. You see your baseline, the required cumulative cut, and your resulting target intensity for the year.</p></div>
-      <div class="phase-card"><span class="p-num">02</span><h4>Abatement Plan</h4><p>Decide how many measures on your cost curve to commit to. This sets how much capital you spend this period — not necessarily your actual intensity, since bigger measures take time to land (see section 5).</p></div>
+      <div class="phase-card"><span class="p-num">02</span><h4>Abatement Plan</h4><p>Decide how many measures on your cost curve to commit to, and how much of your capacity to run given the year's demand outlook (see section 5). Abatement sets how much capital you spend and, with a delay, your actual intensity; production sets your output and revenue.</p></div>
       <div class="phase-card"><span class="p-num">03</span><h4>Exchange</h4><p>Post a buy or sell order for CCCs. A uniform clearing price is set across all nine operators' orders, bounded by the price collar.</p></div>
       <div class="phase-card"><span class="p-num">04</span><h4>Settlement</h4><p>Trades execute, shortfalls are covered from your bank or penalized, surplus is sold or banked, and your profit for the period is booked.</p></div>
     </div>
-    <p>Each year's targets are more demanding than the last — this mirrors CCTS's real phased trajectory, which tightens from roughly a 2-3% average cut in FY25-26 to 3.3-7.5%+ in FY26-27. FY27-28 continues that trajectory (see section 11 for exactly how).</p>
+    <p>Each year's targets are more demanding than the last — this mirrors CCTS's real phased trajectory, which tightens from roughly a 2-3% average cut in FY25-26 to 3.3-7.5%+ in FY26-27. FY27-28 continues that trajectory (see section 12 for exactly how).</p>
 
-    <h2 id="abatement">5. Reading your abatement cost curve</h2>
+    <h2 id="demand">5. Demand scenarios and production planning</h2>
+    <p>At the start of every compliance year, before you plan abatement, a <strong>macro growth scenario</strong> is drawn and shown to every operator on the Target Briefing screen — a coherent story (an infrastructure boom, an export slowdown, a broad recession) that moves several related sectors' demand together, rather than each sector getting independent random noise. The same scenario applies to everyone in the room that year, so in multiplayer it's common ground every player is reasoning against.</p>
+    <p>Your <strong>output capacity is fixed</strong> — set once when your company was generated and never changes. What you decide each year is your <strong>production level</strong>: what share of that fixed capacity you actually run, from 70% to 130%, given the year's demand outlook for your sector.</p>
+    <div class="callout warn">
+      <span class="c-label">Intensity targets don't care how much you produce — but they still bite harder</span>
+      <p>CCTS targets are per-unit (tCO2e per tonne of output), not an absolute cap. Producing more doesn't change whether you're compliant on an intensity basis — but it does scale up the <em>tonnage</em> of whatever surplus or deficit you already have. A small per-unit shortfall that's easy to shrug off at 100% production becomes a real, expensive deficit at 130%. Production is a multiplier on the compliance position your abatement plan already put you in, for better or worse.</p>
+    </div>
+    <p>Production also sets your revenue for the year. Every sector has a demand ceiling for the year — your fixed capacity times the scenario's demand multiplier for that sector. Output up to that ceiling sells at full margin; anything produced past it still gets made (and still emits) but sells at a steep discount, representing dumping into a market that doesn't want it. The Abatement Plan screen's production slider previews this live: actual output, projected revenue, and a warning the moment you cross the ceiling.</p>
+    <p>The scenario card shows every sector's demand multiplier for the year, not just yours — useful context for reading what your trading counterparts are likely to do (a sector staring at -10% demand has less reason to run its capacity hard, whatever its compliance position).</p>
+
+    <h2 id="abatement">6. Reading your abatement cost curve</h2>
     <p>Every company has four abatement measures, ordered cheapest-to-most-expensive — a simplified <strong>marginal abatement cost curve (MACC)</strong>. Each measure shows two numbers: how much intensity it cuts (tCO2e per unit of output) and what it costs per tonne abated (₹/tCO2e).</p>
     <p>The abatement slider commits measures in order — you can't skip to an expensive measure without first committing the cheaper ones ahead of it, which mirrors how real efficiency investment tends to work (the cheap retrofit happens before the expensive process redesign).</p>
     <div class="callout good">
@@ -217,7 +228,7 @@
     </div>
     <p>Watch the bullet bar on the Abatement Plan screen: the filled bar is your actual (Active-only) intensity, the vertical mark is your target. Green means you're at or under target (a surplus); red means you're still short (a deficit you'll need to cover on the exchange).</p>
 
-    <h2 id="exchange">6. How the exchange clears a price</h2>
+    <h2 id="exchange">7. How the exchange clears a price</h2>
     <p>CCTS trades CCCs through power exchanges under Central Electricity Regulatory Commission oversight, with a price collar mechanism planned. This simulator models that as a <strong>uniform-price call auction</strong>: every one of the nine operators — you and eight AI-driven counterparts — submits one order for the trading window, all at once. Sellers state a minimum acceptable price; buyers state a maximum they'll pay.</p>
     <p>The system finds the single clearing price where the most volume crosses — every filled seller receives that price, every filled buyer pays that price, regardless of what they originally asked for. The result is clamped to the collar: <strong>₹500–₹6,000 per tCO2e</strong> in this simulation.</p>
     <ul>
@@ -226,16 +237,16 @@
       <li>If the market simply doesn't cross — nobody's bid reaches anybody's ask — no trade happens and the reference price for the next window falls back to the last real clearing price.</li>
     </ul>
 
-    <h2 id="settlement">7. Settlement and your score</h2>
+    <h2 id="settlement">8. Settlement and your score</h2>
     <p>After the exchange closes, each operator settles independently:</p>
     <ol>
       <li>Any deficit not covered by the bank draw-down or exchange purchase is penalized at <strong>2× the clearing price</strong> per tonne short — this is CCTS's actual notified penalty rate.</li>
       <li>Any surplus not sold is banked. <strong>Banking is unlimited and never expires; borrowing from a future year is never allowed</strong> — both match the real scheme.</li>
-      <li>Your profit for the period is: production margin, minus this period's new abatement capex, minus net CCC spend (what you paid to buy, less what you earned selling), minus any penalty.</li>
+      <li>Your profit for the period is: production revenue (at full margin up to the year's demand ceiling, a discounted margin on anything sold past it — see section 5), minus this period's new abatement capex, minus net CCC spend (what you paid to buy, less what you earned selling), minus any penalty.</li>
     </ol>
     <p>Cumulative profit across all three years determines your rank on the nine-operator leaderboard at the end of the game.</p>
 
-    <h2 id="operators">8. The other eight operators</h2>
+    <h2 id="operators">9. The other eight operators</h2>
     <p>The eight AI-driven companies are drawn from four recurring strategies, so the market has real texture rather than one uniform opponent:</p>
     <dl>
       <dt>Cost-Minimizing Complier</dt>
@@ -247,17 +258,20 @@
       <dt>Laggard Penalty-Payer</dt>
       <dd>Activates the bare minimum and sets a low ceiling price when buying — it would often rather eat the 2× penalty than pay what the market is asking. Watch for this type keeping the exchange from clearing at all.</dd>
     </dl>
+    <p>Every AI operator also sets its own production level each year — roughly tracking its sector's demand multiplier for the scenario, plus a little noise. Bots don't chase the oversupply discount, but they also won't leave demand on the table by running well under the ceiling.</p>
 
-    <h2 id="strategy">9. Strategy notes</h2>
+    <h2 id="strategy">10. Strategy notes</h2>
     <ul>
       <li><strong>Check whether a measure is worth it before you commit it</strong> — compare its ₹/tCO2e cost to what CCCs are actually trading for. A measure priced above the market is cheaper to skip and buy your way out of instead.</li>
       <li><strong>Front-loading is a bet on the whole trajectory, not just next year.</strong> Committing your Deep Process Redesign in Year 1 is close to the last moment it can still land before the cycle ends (2-year lead time, 3-year cycle) — wait too long and you're paying for a measure that never delivers this cycle.</li>
       <li><strong>Lead time turns "reactive" compliance into a trap.</strong> Waiting until you see a deficit to commit a measure means that measure's cut arrives one or two years <em>after</em> the year you needed it — plan against next year's target, not this year's.</li>
+      <li><strong>Production amplifies whatever compliance position you're already in.</strong> Running hard in a boom year is free money only if your abatement plan already covers the target — otherwise you're scaling up a deficit right alongside the revenue.</li>
+      <li><strong>Chasing every unit of demand isn't always worth it.</strong> Producing past the year's demand ceiling still emits at full intensity but sells at a 40% discount — sometimes the better call is to under-produce a soft-demand sector rather than dump into it.</li>
       <li><strong>A big ask doesn't guarantee a sale.</strong> If your floor price sits above every buyer's ceiling, nothing trades and your surplus just gets banked instead — not a loss, but not realized cash either.</li>
       <li><strong>The penalty is a real backstop, not a bluff.</strong> At 2× the clearing price, letting a deficit ride to settlement is rarely cheaper than covering it on the exchange unless the market is asking an unusually high price.</li>
     </ul>
 
-    <h2 id="glossary">10. Glossary</h2>
+    <h2 id="glossary">11. Glossary</h2>
     <dl>
       <dt>CCC — Carbon Credit Certificate</dt>
       <dd>The tradeable unit of the compliance mechanism. 1 CCC = 1 tonne of CO2-equivalent.</dd>
@@ -281,9 +295,15 @@
       <dd>Oversees CCC trading on the power exchanges.</dd>
       <dt>MRV</dt>
       <dd>Monitoring, Reporting and Verification — the annual emissions-reporting and third-party-verification cycle every obligated entity goes through.</dd>
+      <dt>Growth scenario</dt>
+      <dd>A coherent macro demand story drawn at the start of each compliance year, moving several sectors' demand together rather than each in isolation. Shown to every operator before they plan production or abatement.</dd>
+      <dt>Production level</dt>
+      <dd>The share of your fixed output capacity you choose to actually run this year, 70%–130%. Scales your absolute emissions, allowance, and revenue — it does not change your per-unit intensity or target.</dd>
+      <dt>Demand ceiling</dt>
+      <dd>Your fixed capacity times the year's demand multiplier for your sector. Output up to this level sells at full margin; output past it sells at a discount.</dd>
     </dl>
 
-    <h2 id="honesty">11. What's real vs. illustrative</h2>
+    <h2 id="honesty">12. What's real vs. illustrative</h2>
     <div class="callout warn">
       <span class="c-label">Read this before citing any number from the game</span>
       <p>This simulator is built for gameplay and intuition, not for policy analysis. Treat every number in it as illustrative unless stated otherwise here.</p>
@@ -302,10 +322,11 @@
       <li>Targets in this simulator are computed by applying each sector's cumulative reduction percentage to each company's own baseline. The real CCTS sets entity-specific targets through a more detailed BEE process — this is a simplification.</li>
       <li>The ₹500–₹6,000/tCO2e price collar is a plausible illustrative range, not a published number — CCTS has stated a collar is planned but has not (as of this deck) published its bounds.</li>
       <li><strong>Abatement measure lead times (0/1/1/2 years) are an illustrative approximation</strong>, not sourced from real project-delivery timelines for these sectors — real capex lead times vary enormously by technology and plant, and can run longer than what's modeled here.</li>
+      <li><strong>Growth scenarios, their per-sector demand multipliers, and the oversupply discount rate are illustrative</strong>, not sourced from any real macroeconomic forecast — they exist to give operators a coherent yearly story to plan production against, not to model actual demand risk for these industries.</li>
     </ul>
     <p>If you have real marginal abatement cost data or real investment lead times for specific companies, they can be substituted in for the procedural generator — ask for it to be added.</p>
 
-    <h2 id="simulator">12. The Market Simulator mode</h2>
+    <h2 id="simulator">13. The Market Simulator mode</h2>
     <p>Where Solo vs. AI Operators has you playing one company by hand, the <strong>Market Simulator</strong> has no manual play at all — you configure the shape of the market and it runs the whole thing many times over, reporting a forecast rather than a single outcome.</p>
     <h3>What you configure</h3>
     <dl>
@@ -314,7 +335,7 @@
       <dt>Starting-posture mix</dt>
       <dd>Relative weight given to Efficient Incumbent, Mid-Pack Operator, and Legacy Laggard. These are odds, not fixed percentages — a weight of 100 against two weights of 50 means that posture is drawn roughly twice as often, not that it's exactly half the market.</dd>
       <dt>Trading-behavior mix</dt>
-      <dd>Relative weight given to the four bot strategies described in section 8. This is what shapes market dynamics most: a market weighted heavily toward Laggard Penalty-Payers will show more uncovered deficits and a higher penalty share; one weighted toward Bankers will show more banked surplus and firmer prices.</dd>
+      <dd>Relative weight given to the four bot strategies described in section 9. This is what shapes market dynamics most: a market weighted heavily toward Laggard Penalty-Payers will show more uncovered deficits and a higher penalty share; one weighted toward Bankers will show more banked surplus and firmer prices.</dd>
       <dt>Abatement cost uncertainty</dt>
       <dd>How much each measure's cost and reduction potential is allowed to randomly vary firm-to-firm (±5% / ±10% / ±25%). Higher uncertainty widens the forecast band.</dd>
       <dt>Monte Carlo trials</dt>
@@ -330,7 +351,7 @@
     </ul>
     <div class="callout">
       <span class="c-label">This is a forecasting toy, not a market prediction</span>
-      <p>The output is only as credible as the behavioral weights and cost curves you put in, and the cost curves are procedurally generated (see section 11). Use it to build intuition for how a behavioral mix shapes price and compliance outcomes, not as a prediction of what the real CCTS market will do.</p>
+      <p>The output is only as credible as the behavioral weights and cost curves you put in, and the cost curves are procedurally generated (see section 12). Use it to build intuition for how a behavioral mix shapes price and compliance outcomes, not as a prediction of what the real CCTS market will do.</p>
     </div>
 
     <a class="btn" href="index.html">← Back to the simulator</a>

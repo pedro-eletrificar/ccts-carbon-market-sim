@@ -243,6 +243,16 @@
     background: var(--surface-2); border: 1px solid var(--border); color: var(--accent);
   }
 
+  .outlook-strip { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .outlook-chip {
+    display: flex; flex-direction: column; gap: 0.15rem;
+    padding: 0.4rem 0.65rem; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--surface-2); min-width: 92px;
+  }
+  .outlook-chip.mine { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .outlook-chip .oc-sector { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .outlook-chip .oc-delta { font-family: var(--mono); font-weight: 700; font-size: 14px; }
+
   input[type="range"] { width: 100%; accent-color: var(--accent); }
   input[type="number"] {
     font-family: var(--mono); font-variant-numeric: tabular-nums;
@@ -311,7 +321,8 @@
 
     for (var year = 1; year <= TOTAL_YEARS; year++) {
       var priceGuess = priceHistory.length ? priceHistory[priceHistory.length - 1] : (PRICE_FLOOR + PRICE_CEIL) / 2;
-      var abate = resolveAbatement(firms, year, priceGuess, botChooseAbatement);
+      var scenario = pickScenario();
+      var abate = resolveAbatement(firms, year, priceGuess, botChooseAbatement, botChooseProduction, scenario);
       var trading = resolveTrading(firms, abate, priceGuess, botChooseOrder, year);
       priceHistory.push(trading.auction.clearingPrice);
 
@@ -398,6 +409,7 @@
     yearData: {},
     draft: { sectorId: null, archetypeId: null },
     abateDraft: 0,
+    productionDraft: 1,
     tradeDraft: { qty: 0, limitPrice: PRICE_FLOOR },
     simConfig: {
       firmsPerSector: 15,
@@ -427,6 +439,7 @@
     joinDraft: { code: "", name: "" },
     seatDraft: { seat: null, name: "", archetypeId: "midpack" },
     abateDraft: 0,
+    productionDraft: 1,
     tradeDraft: { qty: 0, limitPrice: PRICE_FLOOR },
     busy: false
   };
@@ -551,7 +564,7 @@
   async function mpSubmitAbatement() {
     MP.busy = true; render();
     try {
-      var data = await mpApi("submitAbatement", { code: MP.code, seat: MP.mySeat, activatedCount: MP.abateDraft });
+      var data = await mpApi("submitAbatement", { code: MP.code, seat: MP.mySeat, activatedCount: MP.abateDraft, productionLevel: MP.productionDraft });
       MP.state = data.state;
     } catch (e) { MP.entryError = e.message; }
     MP.busy = false; render();
@@ -580,12 +593,16 @@
     G.year = 1;
     G.priceHistory = [];
     G.yearData = {};
+    ensureYearData();
     G.screen = "briefing";
     render();
   }
 
   function beginAbatement() {
     G.abateDraft = player().activatedCount;
+    var yd = ensureYearData();
+    var mySector = sectorById(player().sectorId);
+    G.productionDraft = Math.round(yd.scenario.demand[mySector.id] * 20) / 20;
     G.screen = "abatement";
     render();
   }
@@ -595,7 +612,9 @@
     var priceGuess = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
     yd.abate = resolveAbatement(G.companies, G.year, priceGuess, function (c, s, year, pg) {
       return c.isPlayer ? clamp(G.abateDraft, c.activatedCount, 4) : botChooseAbatement(c, s, year, pg);
-    });
+    }, function (c, s, year, scenario) {
+      return c.isPlayer ? G.productionDraft : botChooseProduction(c, s, year, scenario);
+    }, yd.scenario);
     G.screen = "trading";
     var pAbate = yd.abate[player().id];
     G.tradeDraft = pAbate.surplusDeficit >= 0
@@ -605,7 +624,7 @@
   }
 
   function ensureYearData() {
-    if (!G.yearData[G.year]) G.yearData[G.year] = { abate: {}, orders: [], auction: null, settled: {} };
+    if (!G.yearData[G.year]) G.yearData[G.year] = { scenario: pickScenario(), abate: {}, orders: [], auction: null, settled: {} };
     return G.yearData[G.year];
   }
 
@@ -631,6 +650,7 @@
   function nextYear() {
     if (G.year < TOTAL_YEARS) {
       G.year++;
+      ensureYearData();
       G.screen = "briefing";
     } else {
       G.screen = "summary";
@@ -935,6 +955,23 @@
     return html;
   }
 
+  function outlookDelta(mult) {
+    var deltaPct = Math.round((mult - 1) * 100);
+    var color = deltaPct > 2 ? "var(--good)" : deltaPct < -2 ? "var(--critical)" : "var(--muted)";
+    var sign = deltaPct > 0 ? "+" : "";
+    return '<span class="oc-delta" style="color:' + color + ';">' + sign + deltaPct + '%</span>';
+  }
+
+  function renderScenarioCard(scenario, mySectorId) {
+    return '<div class="card stack">' +
+      '<div><span class="eyebrow" style="margin-bottom:0.2rem;">Market Outlook This Year</span><h3 style="margin:0;text-transform:none;letter-spacing:0;font-size:1.1rem;color:var(--ink);">' + scenario.name + '</h3></div>' +
+      '<p style="margin:0;">' + scenario.narrative + '</p>' +
+      '<div class="outlook-strip">' + SECTORS.map(function (s) {
+        return '<div class="outlook-chip' + (s.id === mySectorId ? " mine" : "") + '"><span class="oc-sector">' + s.name + '</span>' + outlookDelta(scenario.demand[s.id]) + '</div>';
+      }).join("") + '</div>' +
+    '</div>';
+  }
+
   function sidebarCard() {
     var p = player();
     var sec = sectorById(p.sectorId);
@@ -956,6 +993,7 @@
     var target = targetIntensity(p, sec, G.year);
     var reductionPct = G.year === 1 ? sec.fy26 : G.year === 2 ? sec.fy27 : sec.fy28;
     var yearLabel = fyLabel(G.year);
+    var yd = ensureYearData();
     return '<div class="wrap grid-2">' +
       '<div class="stack">' + sidebarCard() + '</div>' +
       '<div class="stack">' +
@@ -971,9 +1009,20 @@
           '</div>' +
           '<p class="muted" style="margin:0;">Miss the target and you must surrender CCCs to cover the gap — from your bank first, then the exchange. Any shortfall left uncovered is penalized at 2× the prevailing market price. Beat the target and the surplus becomes CCCs you can sell or bank indefinitely.</p>' +
         '</div>' +
-        '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="goto-abatement">Plan Abatement →</button></div>' +
+        renderScenarioCard(yd.scenario, p.sectorId) +
+        '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="goto-abatement">Plan Abatement & Production →</button></div>' +
       '</div>' +
     '</div>';
+  }
+
+  function previewProductionStats(company, sector, level, scenario) {
+    var actualOutput = company.output * level;
+    var demandMult = scenario.demand[sector.id];
+    var ceiling = company.output * demandMult;
+    var sellableFull = Math.min(actualOutput, ceiling);
+    var excess = Math.max(0, actualOutput - sellableFull);
+    var revenue = company.margin * sellableFull + company.margin * 0.4 * excess;
+    return { actualOutput: actualOutput, ceiling: ceiling, revenue: revenue, oversupplied: excess > 0 };
   }
 
   function renderAbatement() {
@@ -985,12 +1034,28 @@
     var reduced = cumulativeReduction(p, effCount);
     var actual = p.baselineIntensity - reduced;
     var capex = newMeasuresCost(p, p.activatedCount, count);
+    var yd = ensureYearData();
+    var prodLevel = G.productionDraft;
+    var prodStats = previewProductionStats(p, sec, prodLevel, yd.scenario);
     var html = '<div class="wrap grid-2">' +
       '<div class="stack">' + sidebarCard() + '</div>' +
       '<div class="stack">' +
         stepsBar("abatement") +
-        '<h2>Abatement plan</h2>' +
-        '<p>Deploy measures cheapest-first. Investments carry forward for free once they land — but a commitment isn\'t instant: bigger measures take a year or more of lead time before they actually cut emissions, so the intensity below only counts what\'s really in effect this period.</p>' +
+        '<h2>Production & abatement plan</h2>' +
+        renderScenarioCard(yd.scenario, p.sectorId) +
+        '<h3 style="margin-bottom:0;">Production planning</h3>' +
+        '<p style="margin-top:0.3rem;">Intensity targets don\'t care how much you produce — but producing more scales up whatever surplus or deficit you already have. Producing past what this year\'s demand supports sells the excess at a steep discount.</p>' +
+        '<div class="card stack">' +
+          '<input type="range" min="70" max="130" step="5" value="' + Math.round(prodLevel * 100) + '" id="production-slider" />' +
+          '<div class="row" style="justify-content:space-between;">' +
+            '<div class="kpi"><span class="kv" id="production-level">' + Math.round(prodLevel * 100) + '%</span><span class="kl">Of Capacity (' + moneyInt.format(p.output) + ' ' + sec.unit + '/yr)</span></div>' +
+            '<div class="kpi"><span class="kv" id="production-output">' + moneyInt.format(Math.round(prodStats.actualOutput)) + '</span><span class="kl">Planned Output</span></div>' +
+            '<div class="kpi"><span class="kv" id="production-revenue" style="color:' + (prodStats.oversupplied ? "var(--warning)" : "var(--ink)") + '">' + cr(prodStats.revenue) + '</span><span class="kl">Est. Revenue</span></div>' +
+          '</div>' +
+          '<p class="muted" style="margin:0;" id="production-note">' + (prodStats.oversupplied ? "Producing above the demand ceiling (" + moneyInt.format(Math.round(prodStats.ceiling)) + ") — the excess sells at a discount." : "Within this year's demand ceiling (" + moneyInt.format(Math.round(prodStats.ceiling)) + ") — full-price revenue on all of it.") + '</p>' +
+        '</div>' +
+        '<h3 style="margin-bottom:0;">Abatement measures</h3>' +
+        '<p style="margin-top:0.3rem;">Deploy measures cheapest-first. Investments carry forward for free once they land — but a commitment isn\'t instant: bigger measures take a year or more of lead time before they actually cut emissions, so the intensity below only counts what\'s really in effect this period.</p>' +
         '<div class="chart-card">' + bulletChart(actual, target, p.baselineIntensity) + '</div>' +
         '<div class="card stack" id="measure-list">' + measureRows(p, count, G.year) + '</div>' +
         '<input type="range" min="0" max="4" step="1" value="' + count + '" id="abate-slider" />' +
@@ -1097,6 +1162,8 @@
             '<span class="muted">Cleared at ' + rupee(auction.clearingPrice) + '/tCO2e</span>' +
           '</div>' +
           '<div class="table-wrap"><table><tbody>' +
+            settleRow("Production", moneyInt.format(Math.round(rec.actualOutput)) + " units (" + Math.round(rec.productionLevel * 100) + "% of capacity)") +
+            settleRow("Revenue", cr(rec.revenue)) +
             settleRow("Target vs. actual intensity", num2.format(rec.target) + " vs " + num2.format(rec.actual)) +
             settleRow("Surplus / (deficit)", num2.format(rec.surplusDeficit) + " tCO2e") +
             settleRow("Bank drawn down", moneyInt.format(Math.round(rec.bankUsed)) + " tCO2e") +
@@ -1481,12 +1548,14 @@
   function renderMpBriefing() {
     var mine = mpMyCompany();
     var sector = mine ? sectorById(mine.sectorId) : null;
+    var yd = MP.state.yearData[MP.state.year] || {};
     var html = '<div class="wrap grid-2">' +
       '<div class="stack">' + mpRoster() + '</div>' +
       '<div class="stack">' +
         mpStepsBar("briefing") + mpHeader() +
         '<h2>Target notified</h2>' +
         mpErrorBanner() +
+        (yd.scenario ? renderScenarioCard(yd.scenario, mine ? mine.sectorId : null) : "") +
         (mine
           ? '<div class="card stack"><p>Your entity-level target for this period:</p>' +
             '<div class="kpi-row">' +
@@ -1507,24 +1576,47 @@
     }
     if (MP.abateDraftYear !== MP.state.year) { MP.abateDraft = mine.activatedCount; MP.abateDraftYear = MP.state.year; }
     var sector = sectorById(mine.sectorId);
+    var yd = MP.state.yearData[MP.state.year] || {};
+    if (MP.productionDraftYear !== MP.state.year) {
+      MP.productionDraft = yd.scenario ? Math.round(yd.scenario.demand[sector.id] * 20) / 20 : 1;
+      MP.productionDraftYear = MP.state.year;
+    }
     var target = targetIntensity(mine, sector, MP.state.year);
     var alreadySubmitted = MP.state.submissions.abatement[MP.mySeat] != null;
     var count = alreadySubmitted ? MP.state.submissions.abatement[MP.mySeat] : MP.abateDraft;
+    var prodSubmitted = MP.state.submissions.production[MP.mySeat];
+    var prodLevel = prodSubmitted != null ? prodSubmitted : MP.productionDraft;
     var effCount = previewEffectiveCount(mine, count, MP.state.year);
     var reduced = cumulativeReduction(mine, effCount);
     var actual = mine.baselineIntensity - reduced;
     var capex = newMeasuresCost(mine, mine.activatedCount, count);
+    var prodStats = yd.scenario ? previewProductionStats(mine, sector, prodLevel, yd.scenario) : null;
     var html = '<div class="wrap grid-2">' +
       '<div class="stack">' + mpRoster("abatement") + '</div>' +
       '<div class="stack">' +
         mpStepsBar("abatement") + mpHeader() +
-        '<h2>Abatement plan</h2>' +
-        '<p>Bigger measures take a year or more of lead time before they actually cut emissions — the intensity below only counts what\'s really in effect this period.</p>' +
+        '<h2>Production &amp; abatement plan</h2>' +
         mpErrorBanner() +
+        (yd.scenario ? renderScenarioCard(yd.scenario, mine.sectorId) : "") +
+        (prodStats ? '<div class="card stack">' +
+          '<h3 style="margin:0;">Production planning</h3>' +
+          '<p style="margin:0;">Capacity is fixed — this year\'s call is how much of it to run given the outlook above.</p>' +
+          '<input type="range" min="70" max="130" step="5" value="' + Math.round(prodLevel * 100) + '" id="mp-production-slider" />' +
+          '<div class="row" style="justify-content:space-between;">' +
+            '<div class="kpi"><span class="kv" id="mp-production-level">' + Math.round(prodLevel * 100) + '%</span><span class="kl">Production Level</span></div>' +
+            '<div class="kpi"><span class="kv" id="mp-production-output">' + moneyInt.format(Math.round(prodStats.actualOutput)) + '</span><span class="kl">Actual Output</span></div>' +
+            '<div class="kpi"><span class="kv" id="mp-production-revenue" style="color:' + (prodStats.oversupplied ? "var(--warning)" : "var(--ink)") + '">' + cr(prodStats.revenue) + '</span><span class="kl">Projected Revenue</span></div>' +
+          '</div>' +
+          '<p class="muted" id="mp-production-note" style="margin:0;">' + (prodStats.oversupplied
+            ? "Producing above the demand ceiling (" + moneyInt.format(Math.round(prodStats.ceiling)) + ") — the excess sells at a discount."
+            : "Within this year's demand ceiling (" + moneyInt.format(Math.round(prodStats.ceiling)) + ") — full-price revenue on all of it.") + '</p>' +
+        '</div>' : "") +
+        '<h3 style="margin-bottom:0;">Abatement measures</h3>' +
+        '<p style="margin-top:0.2rem;">Bigger measures take a year or more of lead time before they actually cut emissions — the intensity below only counts what\'s really in effect this period.</p>' +
         '<div class="chart-card">' + bulletChart(actual, target, mine.baselineIntensity) + '</div>' +
         '<div class="card stack" id="mp-measure-list">' + measureRows(mine, count, MP.state.year) + '</div>' +
         (alreadySubmitted
-          ? '<div class="card"><p style="margin:0;">Submitted — ' + count + ' measure(s) committed. You can still change this until the host advances.</p></div>'
+          ? '<div class="card"><p style="margin:0;">Submitted — ' + count + ' measure(s) committed, production ' + Math.round((prodSubmitted != null ? prodSubmitted : 1) * 100) + '%. You can still change this until the host advances.</p></div>'
           : "") +
         '<input type="range" min="0" max="4" step="1" value="' + count + '" id="mp-abate-slider" />' +
         '<div class="row" style="justify-content:space-between;">' +
@@ -1601,6 +1693,8 @@
             '<span class="muted">Cleared at ' + rupee(yd.auction.clearingPrice) + '/tCO2e</span>' +
           '</div>' +
           '<div class="table-wrap"><table><tbody>' +
+            settleRow("Production", moneyInt.format(Math.round(rec.actualOutput)) + " units (" + Math.round(rec.productionLevel * 100) + "% of capacity)") +
+            settleRow("Revenue", cr(rec.revenue)) +
             settleRow("Target vs. actual intensity", num2.format(rec.target) + " vs " + num2.format(rec.actual)) +
             settleRow("Surplus / (deficit)", num2.format(rec.surplusDeficit) + " tCO2e") +
             settleRow("Penalty (2× price)", rec.penalty > 0.01 ? cr(rec.penalty) : "—") +
@@ -1697,6 +1791,24 @@
         document.getElementById("measure-list").innerHTML = measureRows(p, G.abateDraft, G.year);
       };
     }
+    var prodSlider = document.getElementById("production-slider");
+    if (prodSlider) {
+      prodSlider.oninput = function () {
+        G.productionDraft = parseInt(prodSlider.value, 10) / 100;
+        var p = player();
+        var sec = sectorById(p.sectorId);
+        var yd = ensureYearData();
+        var stats = previewProductionStats(p, sec, G.productionDraft, yd.scenario);
+        document.getElementById("production-level").textContent = Math.round(G.productionDraft * 100) + "%";
+        document.getElementById("production-output").textContent = moneyInt.format(Math.round(stats.actualOutput));
+        var revEl = document.getElementById("production-revenue");
+        revEl.textContent = cr(stats.revenue);
+        revEl.style.color = stats.oversupplied ? "var(--warning)" : "var(--ink)";
+        document.getElementById("production-note").textContent = stats.oversupplied
+          ? "Producing above the demand ceiling (" + moneyInt.format(Math.round(stats.ceiling)) + ") — the excess sells at a discount."
+          : "Within this year's demand ceiling (" + moneyInt.format(Math.round(stats.ceiling)) + ") — full-price revenue on all of it.";
+      };
+    }
     var qtyEl = document.getElementById("trade-qty");
     var priceEl = document.getElementById("trade-price");
     if (qtyEl) qtyEl.oninput = function () { G.tradeDraft.qty = parseFloat(qtyEl.value) || 0; };
@@ -1752,6 +1864,25 @@
         intensityEl.textContent = num2.format(actual);
         intensityEl.style.color = actual <= target ? "var(--good)" : "var(--critical)";
         document.getElementById("mp-measure-list").innerHTML = measureRows(mine, MP.abateDraft, MP.state.year);
+      };
+    }
+    var mpProdSlider = document.getElementById("mp-production-slider");
+    if (mpProdSlider) {
+      mpProdSlider.oninput = function () {
+        MP.productionDraft = parseInt(mpProdSlider.value, 10) / 100;
+        var mine = mpMyCompany();
+        var sector = sectorById(mine.sectorId);
+        var yd = MP.state.yearData[MP.state.year] || {};
+        if (!yd.scenario) return;
+        var stats = previewProductionStats(mine, sector, MP.productionDraft, yd.scenario);
+        document.getElementById("mp-production-level").textContent = Math.round(MP.productionDraft * 100) + "%";
+        document.getElementById("mp-production-output").textContent = moneyInt.format(Math.round(stats.actualOutput));
+        var revEl = document.getElementById("mp-production-revenue");
+        revEl.textContent = cr(stats.revenue);
+        revEl.style.color = stats.oversupplied ? "var(--warning)" : "var(--ink)";
+        document.getElementById("mp-production-note").textContent = stats.oversupplied
+          ? "Producing above the demand ceiling (" + moneyInt.format(Math.round(stats.ceiling)) + ") — the excess sells at a discount."
+          : "Within this year's demand ceiling (" + moneyInt.format(Math.round(stats.ceiling)) + ") — full-price revenue on all of it.";
       };
     }
     var mpQtyEl = document.getElementById("mp-trade-qty");

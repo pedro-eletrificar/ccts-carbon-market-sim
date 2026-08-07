@@ -34,6 +34,52 @@ var TOTAL_YEARS = 3;
 // after it are effective either" without re-checking every tier.
 var MEASURE_LEAD_TIMES = [0, 1, 1, 2];
 
+// One of these is drawn at the start of every compliance year and shown to
+// every operator before they plan production or abatement — a coherent
+// macro story (a boom or slump that moves related sectors together) rather
+// than independent noise per sector. Demand multipliers are illustrative,
+// not sourced from any real forecast. Weights sum to 100.
+var GROWTH_SCENARIOS = [
+  {
+    id: "infra_boom", name: "Infrastructure Push", weight: 15,
+    narrative: "A large national infrastructure programme breaks ground — road, rail and housing contracts swell order books for heavy construction inputs.",
+    demand: { aluminium: 1.05, steel: 1.12, cement: 1.15, chloralkali: 1.02, pulp: 1.00, fertilizer: 1.00, refining: 1.03, petrochem: 1.03, textiles: 1.00 }
+  },
+  {
+    id: "export_slowdown", name: "Export Slowdown", weight: 15,
+    narrative: "Weak global demand and tightening CBAM compliance costs squeeze India's export-facing heavy industry.",
+    demand: { aluminium: 0.90, steel: 0.92, cement: 1.00, chloralkali: 1.00, pulp: 0.97, fertilizer: 1.00, refining: 0.96, petrochem: 0.95, textiles: 0.88 }
+  },
+  {
+    id: "recession", name: "Broad Slowdown", weight: 10,
+    narrative: "A sharper-than-expected growth slowdown hits industrial demand across the board.",
+    demand: { aluminium: 0.88, steel: 0.87, cement: 0.90, chloralkali: 0.93, pulp: 0.92, fertilizer: 0.97, refining: 0.94, petrochem: 0.90, textiles: 0.89 }
+  },
+  {
+    id: "consumer_boom", name: "Consumer & Agri Boom", weight: 15,
+    narrative: "Strong rural incomes and a good monsoon lift consumer demand and agricultural input use.",
+    demand: { aluminium: 1.00, steel: 1.00, cement: 1.02, chloralkali: 1.02, pulp: 1.08, fertilizer: 1.15, refining: 1.02, petrochem: 1.05, textiles: 1.10 }
+  },
+  {
+    id: "energy_shock", name: "Energy Price Shock", weight: 10,
+    narrative: "A spike in global energy prices raises input costs economy-wide and dampens energy-intensive production.",
+    demand: { aluminium: 0.93, steel: 0.95, cement: 0.97, chloralkali: 0.90, pulp: 0.94, fertilizer: 0.93, refining: 1.05, petrochem: 0.95, textiles: 0.97 }
+  },
+  {
+    id: "steady", name: "Steady State", weight: 35,
+    narrative: "No major shocks this year — demand tracks its normal underlying growth trend.",
+    demand: { aluminium: 1.00, steel: 1.00, cement: 1.00, chloralkali: 1.00, pulp: 1.00, fertilizer: 1.00, refining: 1.00, petrochem: 1.00, textiles: 1.00 }
+  }
+];
+
+function pickScenario() {
+  var total = 0;
+  for (var i = 0; i < GROWTH_SCENARIOS.length; i++) total += GROWTH_SCENARIOS[i].weight;
+  var r = Math.random() * total, acc = 0;
+  for (i = 0; i < GROWTH_SCENARIOS.length; i++) { acc += GROWTH_SCENARIOS[i].weight; if (r <= acc) return GROWTH_SCENARIOS[i]; }
+  return GROWTH_SCENARIOS[GROWTH_SCENARIOS.length - 1];
+}
+
 var ARCHETYPES = [
   { id: "efficient", name: "Efficient Incumbent", desc: "Already lean. Low starting intensity, but the cheap fixes are gone — further cuts cost more.", baselineMult: 0.85, costMult: 1.4, potentialMult: 0.7 },
   { id: "midpack", name: "Mid-Pack Operator", desc: "Sector-average intensity and a balanced abatement cost curve.", baselineMult: 1.0, costMult: 1.0, potentialMult: 1.0 },
@@ -129,6 +175,15 @@ function newMeasuresCost(company, fromCount, toCount) {
     cost += company.measures[i].costPerTonne * company.measures[i].reductionPerUnit * company.output;
   }
   return cost;
+}
+
+// Bots rationally match supply to demand (plus a little idiosyncratic
+// noise, mainly so a Simulator run with dozens of firms per sector isn't
+// perfectly identical across firms) — the interesting variation is the
+// scenario itself and how a human chooses to react to it, not bot guessing.
+function botChooseProduction(company, sector, year, scenario) {
+  var demandMult = scenario.demand[sector.id];
+  return clamp(demandMult * rnd(0.95, 1.05), 0.5, 1.5);
 }
 
 function botChooseAbatement(company, sector, year, priceGuess) {
@@ -251,7 +306,7 @@ function percentile(sortedArr, p) {
    consults a human's submitted choice where one exists and falls back to
    botChooseAbatement otherwise; `decideOrder` does the same for trading. */
 
-function resolveAbatement(companies, year, priceGuess, decideAbatement) {
+function resolveAbatement(companies, year, priceGuess, decideAbatement, decideProduction, scenario) {
   var abate = {};
   companies.forEach(function (c) {
     var sector = sectorById(c.sectorId);
@@ -267,9 +322,30 @@ function resolveAbatement(companies, year, priceGuess, decideAbatement) {
     var effCount = effectiveCount(c, year);
     var reduced = cumulativeReduction(c, effCount);
     var actualIntensity = c.baselineIntensity - reduced;
-    var emissions = actualIntensity * c.output;
-    var allowance = target * c.output;
-    abate[c.id] = { capex: capex, actualIntensity: actualIntensity, target: target, emissions: emissions, allowance: allowance, surplusDeficit: allowance - emissions, committedCount: newCount, effectiveCount: effCount };
+
+    // Capacity (c.output) is fixed at generation; actual output this year is
+    // a real decision made against the year's demand scenario. Intensity
+    // targets are per-unit, so producing more doesn't change whether you
+    // comply — it scales up the tonnage of whatever surplus or deficit you
+    // already have, for better or worse.
+    var productionLevel = clamp(decideProduction(c, sector, year, scenario), 0.5, 1.5);
+    var actualOutput = c.output * productionLevel;
+    var demandMult = scenario.demand[sector.id];
+    var demandCeiling = c.output * demandMult;
+    var sellableFull = Math.min(actualOutput, demandCeiling);
+    var excess = Math.max(0, actualOutput - sellableFull);
+    // Producing past what the market wants doesn't stop you emitting for
+    // it — it just sells at a steep discount, representing dumping into a
+    // soft market. Ignoring the outlook is a real, not cosmetic, cost.
+    var revenue = c.margin * sellableFull + c.margin * 0.4 * excess;
+
+    var emissions = actualIntensity * actualOutput;
+    var allowance = target * actualOutput;
+    abate[c.id] = {
+      capex: capex, actualIntensity: actualIntensity, target: target, emissions: emissions, allowance: allowance,
+      surplusDeficit: allowance - emissions, committedCount: newCount, effectiveCount: effCount,
+      productionLevel: productionLevel, actualOutput: actualOutput, demandMult: demandMult, revenue: revenue
+    };
   });
   return abate;
 }
@@ -302,11 +378,10 @@ function resolveTrading(companies, abate, priceGuess, decideOrder, year) {
       var stillShort = remaining - bought;
       if (stillShort > 0.01) { penalty = stillShort * 2 * auction.clearingPrice; penaltyTonnes = stillShort; }
     }
-    var revenue = c.margin * c.output;
     var netTrade = sold * auction.clearingPrice - bought * auction.clearingPrice;
-    var yearProfit = revenue - ab.capex - penalty + netTrade;
+    var yearProfit = ab.revenue - ab.capex - penalty + netTrade;
     c.totalProfit += yearProfit;
-    var rec = { year: year, target: ab.target, actual: ab.actualIntensity, surplusDeficit: sd, bankUsed: bankUsed, bought: bought, sold: sold, bankedNow: bankedNow, penalty: penalty, penaltyTonnes: penaltyTonnes, price: auction.clearingPrice, capex: ab.capex, yearProfit: yearProfit, bankEnd: c.bank };
+    var rec = { year: year, target: ab.target, actual: ab.actualIntensity, surplusDeficit: sd, bankUsed: bankUsed, bought: bought, sold: sold, bankedNow: bankedNow, penalty: penalty, penaltyTonnes: penaltyTonnes, price: auction.clearingPrice, capex: ab.capex, yearProfit: yearProfit, bankEnd: c.bank, productionLevel: ab.productionLevel, actualOutput: ab.actualOutput, demandMult: ab.demandMult, revenue: ab.revenue };
     c.history.push(rec);
     settled[c.id] = rec;
   });
@@ -321,12 +396,13 @@ if (typeof module !== "undefined" && module.exports) {
     MEASURE_COST_TIERS: MEASURE_COST_TIERS, MEASURE_FRACTION_TIERS: MEASURE_FRACTION_TIERS,
     MEASURE_LEAD_TIMES: MEASURE_LEAD_TIMES, TOTAL_YEARS: TOTAL_YEARS,
     PRICE_FLOOR: PRICE_FLOOR, PRICE_CEIL: PRICE_CEIL,
+    GROWTH_SCENARIOS: GROWTH_SCENARIOS, pickScenario: pickScenario,
     rnd: rnd, pick: pick, clamp: clamp,
     sectorById: sectorById, archetypeById: archetypeById,
     makeMeasures: makeMeasures, generateCompany: generateCompany,
     targetIntensity: targetIntensity, cumulativeReduction: cumulativeReduction, newMeasuresCost: newMeasuresCost,
     effectiveCount: effectiveCount,
-    botChooseAbatement: botChooseAbatement, botChooseOrder: botChooseOrder,
+    botChooseAbatement: botChooseAbatement, botChooseOrder: botChooseOrder, botChooseProduction: botChooseProduction,
     clearAuction: clearAuction, weightedPick: weightedPick, percentile: percentile,
     resolveAbatement: resolveAbatement, resolveTrading: resolveTrading
   };
