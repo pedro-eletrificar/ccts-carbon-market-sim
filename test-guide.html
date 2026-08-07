@@ -1,0 +1,232 @@
+<meta charset="utf-8">
+<title>Testing Guide — CCTS Carbon Market Simulator</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f5f9ff;
+    --surface: #ffffff;
+    --surface-2: #f1fbff;
+    --ink: #0a0e1a;
+    --ink-2: #3d4552;
+    --muted: #7a8699;
+    --grid: #dce7f5;
+    --baseline: #b9cbe8;
+    --border: rgba(0,51,204,0.14);
+    --accent: #0033cc;
+    --accent-ink: #ffffff;
+    --price: #0033cc;
+    --good: #0f9e7a;
+    --warning: #b8790a;
+    --serious: #c1552f;
+    --critical: #d03b3b;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --display: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #070b18; --surface: #0f1830; --surface-2: #16264d;
+      --ink: #ffffff; --ink-2: #c7d4ec; --muted: #8fa0c2;
+      --grid: #223258; --baseline: #2f4270; --border: rgba(255,255,255,0.14);
+      --accent: #5c86ff; --accent-ink: #071022; --price: #5c86ff;
+      --good: #34d6ac; --warning: #fab219; --serious: #ec835a; --critical: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #070b18; --surface: #0f1830; --surface-2: #16264d;
+    --ink: #ffffff; --ink-2: #c7d4ec; --muted: #8fa0c2;
+    --grid: #223258; --baseline: #2f4270; --border: rgba(255,255,255,0.14);
+    --accent: #5c86ff; --accent-ink: #071022; --price: #5c86ff;
+    --good: #34d6ac; --warning: #fab219; --serious: #ec835a; --critical: #e66767;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --page: #f5f9ff; --surface: #ffffff; --surface-2: #f1fbff;
+    --ink: #0a0e1a; --ink-2: #3d4552; --muted: #7a8699;
+    --grid: #dce7f5; --baseline: #b9cbe8; --border: rgba(0,51,204,0.14);
+    --accent: #0033cc; --accent-ink: #ffffff; --price: #0033cc;
+    --good: #0f9e7a; --warning: #b8790a; --serious: #c1552f; --critical: #d03b3b;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--page); color: var(--ink); font-family: var(--sans); font-size: 15.5px; line-height: 1.6; }
+
+  .top-nav {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    padding: 0.7rem 1.25rem; background: var(--surface-2); border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 12.5px;
+  }
+  .top-nav a { color: var(--ink-2); text-decoration: none; }
+  .top-nav a:hover { color: var(--accent); }
+  .top-nav .brand { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+  .top-nav .lockup { display: flex; align-items: center; gap: 0.55rem; }
+  .top-nav .mark {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    background: var(--accent); color: var(--accent-ink);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--display); font-weight: 800; font-size: 8.5px;
+  }
+  .top-nav .word { font-family: var(--display); font-weight: 800; font-size: 13px; color: var(--accent); }
+  .top-nav .links { display: flex; gap: 1.1rem; }
+
+  main { display: flex; justify-content: center; padding: 2.5rem 1.25rem 5rem; }
+  .doc { width: 100%; max-width: 700px; }
+
+  .eyebrow { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 0.6rem; }
+  h1 { font-family: var(--display); font-size: 2rem; font-weight: 700; text-wrap: balance; margin: 0 0 0.6rem; }
+  h2 { font-family: var(--display); font-size: 1.3rem; font-weight: 700; margin: 2.4rem 0 0.6rem; padding-top: 0.4rem; border-top: 1px solid var(--grid); display: flex; align-items: center; gap: 0.6rem; }
+  h2:first-of-type { border-top: none; padding-top: 0; margin-top: 1.6rem; }
+  h2 .badge { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 0.15rem 0.55rem; }
+  h3 { font-family: var(--display); font-size: 1.02rem; font-weight: 700; margin: 1.4rem 0 0.4rem; color: var(--ink-2); }
+  p { margin: 0 0 0.9rem; color: var(--ink-2); max-width: 64ch; }
+  strong { color: var(--ink); font-weight: 700; }
+  code { font-family: var(--mono); font-size: 0.92em; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.35rem; color: var(--ink); }
+  a { color: var(--accent); }
+
+  .lede { font-size: 1.08rem; color: var(--ink-2); }
+
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.3rem; margin: 1.5rem 0 2rem; }
+  .toc h3 { margin-top: 0; }
+  .toc ol { columns: 2; column-gap: 1.5rem; padding-left: 1.1rem; margin: 0; }
+  .toc li { margin-bottom: 0.3rem; break-inside: avoid; }
+  .toc a { color: var(--ink-2); text-decoration: none; font-size: 13.5px; }
+  .toc a:hover { color: var(--accent); }
+  @media (max-width: 560px) { .toc ol { columns: 1; } }
+
+  .callout { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 0.9rem 1.1rem; margin: 1rem 0; }
+  .callout.warn { border-color: color-mix(in srgb, var(--critical) 35%, var(--border)); }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout .c-label { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.35rem; display: block; }
+
+  .checklist { list-style: none; margin: 0 0 1.3rem; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+  .checklist li {
+    display: flex; align-items: flex-start; gap: 0.65rem;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.7rem 0.9rem; max-width: none;
+  }
+  .checklist input[type="checkbox"] {
+    width: 18px; height: 18px; margin-top: 0.1rem; flex-shrink: 0; accent-color: var(--good); cursor: pointer;
+  }
+  .checklist .item-text { color: var(--ink-2); font-size: 14px; }
+  .checklist .item-text strong { color: var(--ink); }
+  .checklist .expect { display: block; margin-top: 0.25rem; font-size: 12.5px; color: var(--muted); }
+  .checklist .expect b { color: var(--good); font-weight: 700; }
+
+  .prereq { display: inline-flex; align-items: center; gap: 0.3rem; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: 0.8rem; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 0.5rem 0 1.3rem; }
+  th, td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+  td { color: var(--ink-2); }
+  td strong { color: var(--ink); }
+  .table-wrap { overflow-x: auto; }
+
+  .btn { display: inline-block; font-weight: 600; font-size: 14px; padding: 0.6rem 1.1rem; border-radius: 7px; background: var(--accent); color: var(--accent-ink); text-decoration: none; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+
+  .footline { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--grid); font-size: 12px; color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="top-nav">
+  <div class="lockup">
+    <div class="mark">EDF</div>
+    <span class="word">Environmental Defense Fund</span>
+    <span class="brand">· CCTS Carbon Market Simulator</span>
+  </div>
+  <div class="links">
+    <a href="guide.html">How to Play</a>
+    <a href="index.html">← Back to the simulator</a>
+  </div>
+</div>
+
+<main>
+  <article class="doc">
+    <div class="eyebrow">Internal Testing Guide · All three modes</div>
+    <h1>Testing round: what to try, what to report</h1>
+    <p class="lede">This build has three modes — Solo vs. AI, the Market Simulator, and Live Multiplayer — and none of them have had real users kick the tires yet. This guide is a punch list for that first pass: concrete things to try in each mode, what a working result looks like, and how to log what you find.</p>
+
+    <div class="callout">
+      <span class="c-label">Before you start</span>
+      <p>Skim the <a href="guide.html">How to Play guide</a> if you haven't — it explains the rules this simulator is enforcing, and section 11 ("What's real vs. illustrative") separates known simplifications from actual bugs. If a number looks off, check there first: it might be intentional.</p>
+    </div>
+
+    <div class="toc">
+      <h3>Contents</h3>
+      <ol>
+        <li><a href="#solo">1. Solo vs. AI Operators</a></li>
+        <li><a href="#simulator">2. Market Simulator</a></li>
+        <li><a href="#multiplayer">3. Live Multiplayer</a></li>
+        <li><a href="#crosscutting">4. Cross-cutting checks</a></li>
+        <li><a href="#reporting">5. Reporting what you find</a></li>
+      </ol>
+    </div>
+
+    <h2 id="solo"><span class="badge">Mode 1</span>Solo vs. AI Operators</h2>
+    <div class="prereq">Needs: just you, one browser tab</div>
+    <p>The most-tested mode so far — this pass is about trying to break it, not just playing it straight.</p>
+    <ul class="checklist">
+      <li><input type="checkbox"><span class="item-text"><strong>Register in a disclosed-target sector</strong> (Cement, Aluminium, Chlor-Alkali, or Pulp & Paper) and check the baseline/target numbers look sane.<span class="expect">Expect: target intensity below baseline, reduction % roughly matching what the sector tile advertised.</span></span></li>
+      <li><input type="checkbox"><span class="item-text"><strong>Deliberately under-abate</strong> (activate 0-1 measures) to force a deficit, then only partially cover it on the exchange.<span class="expect">Expect: a penalty at settlement, worked out as 2× the clearing price on the uncovered shortfall.</span></span></li>
+      <li><input type="checkbox"><span class="item-text"><strong>Deliberately over-abate</strong> to generate a surplus, offer only part of it for sale.<span class="expect">Expect: the unsold portion shows up as "newly banked," and your CCC bank balance carries into Year 2.</span></span></li>
+      <li><input type="checkbox"><span class="item-text"><strong>Advance to FY 2026-27</strong> and check measures you activated in Year 1 are still active (and weren't re-charged).<span class="expect">Expect: capex this period only reflects <em>newly</em> activated measures, not ones already on from Year 1.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Play through to the final results screen and check the leaderboard and price chart render with no visual glitches.</span></li>
+      <li><input type="checkbox"><span class="item-text">Register a new company and confirm the game fully resets (no leftover state from the last playthrough).</span></li>
+    </ul>
+
+    <h2 id="simulator"><span class="badge">Mode 2</span>Market Simulator</h2>
+    <div class="prereq">Needs: just you, one browser tab</div>
+    <p>This mode never has a single "expected" answer — it's a forecast. What you're checking is that the forecast moves in a sensible direction when you change the inputs.</p>
+    <ul class="checklist">
+      <li><input type="checkbox"><span class="item-text">Run once with all default settings, note the price band and compliance rate.</span></li>
+      <li><input type="checkbox"><span class="item-text">Push the <strong>Laggard Penalty-Payer</strong> strategy weight to maximum, re-run.<span class="expect">Expect: compliance rate drops noticeably, and the "penalized" share of the coverage bar grows.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Compare a run at <strong>Low</strong> cost uncertainty + 300 trials against <strong>High</strong> uncertainty + 10 trials.<span class="expect">Expect: the low-uncertainty/high-trial run has a visibly narrower price band (P10-P90) than the high-uncertainty/low-trial one.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Push firms-per-sector and trials both to maximum (50 / 300) and confirm it still finishes in a few seconds without freezing the page.</span></li>
+      <li><input type="checkbox"><span class="item-text">Scan the sector breakdown table for anything that looks broken — blank cells, negative percentages, "NaN".</span></li>
+    </ul>
+
+    <h2 id="multiplayer"><span class="badge">Mode 3</span>Live Multiplayer</h2>
+    <div class="prereq">Needs: 2+ people, or 2 browser tabs/devices if testing solo</div>
+    <p>The newest and least-tested mode. This is where finding real problems is most valuable — take your time here.</p>
+    <ul class="checklist">
+      <li><input type="checkbox"><span class="item-text">One person creates a room and shares the 4-letter code.<span class="expect">Expect: the code is easy to read/say aloud, and shows up immediately on the host's lobby screen.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Everyone else joins with that code, each claims a <strong>different</strong> sector and a starting posture.<span class="expect">Expect: seat claims appear on <em>everyone's</em> screen within a couple of seconds, not just the person who claimed it.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Try having two people claim the same seat at nearly the same time.<span class="expect">Expect: only one of them succeeds; the other gets a clear "already claimed" message, not a silent failure or a broken state.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Host starts the game with a few seats still unclaimed.<span class="expect">Expect: unclaimed seats are filled by AI operators, visible in the roster with an "AI" tag.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Each human submits an abatement plan; host advances <strong>before everyone has submitted</strong>.<span class="expect">Expect: non-submitters default to no new abatement that period — not an error, not a stuck screen.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Submit a trading order, then <strong>refresh your browser tab</strong> mid-game.<span class="expect">Expect: you land back in your same seat with your progress intact, not bounced to a blank join screen.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Check that everyone sees the <strong>same</strong> settlement results and leaderboard after the host advances through settlement.</span></li>
+      <li><input type="checkbox"><span class="item-text">Play through both compliance years to the shared final results screen, then have everyone leave the room.</span></li>
+    </ul>
+
+    <h2 id="crosscutting">4. Cross-cutting checks</h2>
+    <p>Worth a quick pass regardless of which mode you're focused on:</p>
+    <ul class="checklist">
+      <li><input type="checkbox"><span class="item-text">Toggle your device/browser between light and dark mode mid-session — text should stay readable, nothing should go invisible.</span></li>
+      <li><input type="checkbox"><span class="item-text">Narrow your browser window to phone width (or actually use a phone) — layout should stack, not overflow sideways.</span></li>
+      <li><input type="checkbox"><span class="item-text">If you're comfortable with browser dev tools: open the console (F12 or Cmd+Opt+J) and check for red errors while you play. Screenshot anything you see.</span></li>
+    </ul>
+
+    <h2 id="reporting">5. Reporting what you find</h2>
+    <p>Log issues on the project's GitHub Issues page: <a href="https://github.com/pedro-eletrificar/ccts-carbon-market-sim/issues" target="_blank" rel="noopener">github.com/pedro-eletrificar/ccts-carbon-market-sim/issues</a>. For each one, include:</p>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Field</th><th>Example</th></tr>
+      <tr><td><strong>Mode</strong></td><td>Live Multiplayer</td></tr>
+      <tr><td><strong>What you did</strong></td><td>Refreshed the browser tab mid-abatement-phase</td></tr>
+      <tr><td><strong>Expected</strong></td><td>Land back in my claimed seat (Cement)</td></tr>
+      <tr><td><strong>Actual</strong></td><td>Sent back to the join screen, seat still showed as claimed by me but I couldn't act</td></tr>
+      <tr><td><strong>Screenshot</strong></td><td>If easy to grab, always helpful</td></tr>
+    </table>
+    </div>
+    <p>Before filing: check <a href="guide.html#honesty">the guide's "what's real vs. illustrative" section</a> — a startling number is sometimes a known simplification, not a bug. If you're not sure which, file it anyway and say you're not sure — better to over-report at this stage.</p>
+
+    <a class="btn" href="index.html">← Back to the simulator</a>
+    <p class="footline">An unofficial internal build for EDF (Environmental Defense Fund) testing — not a published EDF product.</p>
+  </article>
+</main>

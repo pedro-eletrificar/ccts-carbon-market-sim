@@ -3,42 +3,42 @@
 <style>
   :root {
     color-scheme: light;
-    --page: #f9f9f7;
-    --surface: #fcfcfb;
-    --surface-2: #ffffff;
-    --ink: #0b0b0b;
-    --ink-2: #52514e;
-    --muted: #898781;
-    --grid: #e1e0d9;
-    --baseline: #c3c2b7;
-    --border: rgba(11,11,11,0.10);
-    --accent: #c15a1e;
+    --page: #f5f9ff;
+    --surface: #ffffff;
+    --surface-2: #f1fbff;
+    --ink: #0a0e1a;
+    --ink-2: #3d4552;
+    --muted: #7a8699;
+    --grid: #dce7f5;
+    --baseline: #b9cbe8;
+    --border: rgba(0,51,204,0.14);
+    --accent: #0033cc;
     --accent-ink: #ffffff;
-    --price: #2a78d6;
-    --good: #0ca30c;
+    --price: #0033cc;
+    --good: #0f9e7a;
     --warning: #b8790a;
     --serious: #c1552f;
     --critical: #d03b3b;
     --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
-    --sans: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
-    --display: "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --sans: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --display: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
       color-scheme: dark;
-      --page: #0d0d0d;
-      --surface: #1a1a19;
-      --surface-2: #20201f;
+      --page: #070b18;
+      --surface: #0f1830;
+      --surface-2: #16264d;
       --ink: #ffffff;
-      --ink-2: #c3c2b7;
-      --muted: #96938a;
-      --grid: #2c2c2a;
-      --baseline: #383835;
-      --border: rgba(255,255,255,0.12);
-      --accent: #e88a4c;
-      --accent-ink: #1a1005;
-      --price: #3987e5;
-      --good: #2fc22f;
+      --ink-2: #c7d4ec;
+      --muted: #8fa0c2;
+      --grid: #223258;
+      --baseline: #2f4270;
+      --border: rgba(255,255,255,0.14);
+      --accent: #5c86ff;
+      --accent-ink: #071022;
+      --price: #5c86ff;
+      --good: #34d6ac;
       --warning: #fab219;
       --serious: #ec835a;
       --critical: #e66767;
@@ -46,38 +46,38 @@
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --page: #0d0d0d;
-    --surface: #1a1a19;
-    --surface-2: #20201f;
+    --page: #070b18;
+    --surface: #0f1830;
+    --surface-2: #16264d;
     --ink: #ffffff;
-    --ink-2: #c3c2b7;
-    --muted: #96938a;
-    --grid: #2c2c2a;
-    --baseline: #383835;
-    --border: rgba(255,255,255,0.12);
-    --accent: #e88a4c;
-    --accent-ink: #1a1005;
-    --price: #3987e5;
-    --good: #2fc22f;
+    --ink-2: #c7d4ec;
+    --muted: #8fa0c2;
+    --grid: #223258;
+    --baseline: #2f4270;
+    --border: rgba(255,255,255,0.14);
+    --accent: #5c86ff;
+    --accent-ink: #071022;
+    --price: #5c86ff;
+    --good: #34d6ac;
     --warning: #fab219;
     --serious: #ec835a;
     --critical: #e66767;
   }
   :root[data-theme="light"] {
     color-scheme: light;
-    --page: #f9f9f7;
-    --surface: #fcfcfb;
-    --surface-2: #ffffff;
-    --ink: #0b0b0b;
-    --ink-2: #52514e;
-    --muted: #898781;
-    --grid: #e1e0d9;
-    --baseline: #c3c2b7;
-    --border: rgba(11,11,11,0.10);
-    --accent: #c15a1e;
+    --page: #f5f9ff;
+    --surface: #ffffff;
+    --surface-2: #f1fbff;
+    --ink: #0a0e1a;
+    --ink-2: #3d4552;
+    --muted: #7a8699;
+    --grid: #dce7f5;
+    --baseline: #b9cbe8;
+    --border: rgba(0,51,204,0.14);
+    --accent: #0033cc;
     --accent-ink: #ffffff;
-    --price: #2a78d6;
-    --good: #0ca30c;
+    --price: #0033cc;
+    --good: #0f9e7a;
     --warning: #b8790a;
     --serious: #c1552f;
     --critical: #d03b3b;
@@ -93,6 +93,21 @@
     line-height: 1.5;
   }
   #app { min-height: 100vh; display: flex; flex-direction: column; }
+
+  .masthead {
+    display: flex; align-items: center; gap: 0.65rem;
+    padding: 0.6rem 1.25rem;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  .masthead .mark {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    background: var(--accent); color: var(--accent-ink);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--display); font-weight: 800; font-size: 10.5px; letter-spacing: -0.02em;
+  }
+  .masthead .word { font-family: var(--display); font-weight: 800; font-size: 15px; color: var(--accent); white-space: nowrap; }
+  .masthead .mdivider { width: 1px; height: 18px; background: var(--border); margin: 0 0.15rem; flex-shrink: 0; }
+  .masthead .product { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .ticker {
     display: flex;
@@ -892,9 +907,20 @@
     return html;
   }
 
+  function masthead() {
+    // Placeholder wordmark, not a reproduction of EDF's actual logo mark — swap
+    // the .mark circle for an <img> of the real asset if/when one is supplied.
+    return '<div class="masthead">' +
+      '<div class="mark">EDF</div>' +
+      '<div class="word">Environmental Defense Fund</div>' +
+      '<div class="mdivider"></div>' +
+      '<div class="product">CCTS Carbon Market Simulator — internal testing build</div>' +
+    '</div>';
+  }
+
   function render() {
     var app = document.getElementById("app");
-    app.innerHTML = ticker() + "<main>" + screenHtml() + "</main>";
+    app.innerHTML = masthead() + ticker() + "<main>" + screenHtml() + "</main>";
     bindEvents();
   }
 
@@ -941,7 +967,7 @@
           '<button class="btn btn-ghost" data-action="goto-mp" style="align-self:flex-start;">Host or Join a Room →</button>' +
         '</div>' +
       '</div>' +
-      '<p class="foot-note">Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali and Pulp & Paper are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Company-level financials are illustrative.</p>' +
+      '<p class="foot-note">Testing this build? See the <a href="test-guide.html" style="color:var(--accent);">Testing Guide</a> for a checklist across all three modes and how to report issues. An unofficial internal build for EDF (Environmental Defense Fund) testing — not a published EDF product. Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali and Pulp & Paper are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Company-level financials are illustrative.</p>' +
     '</div>';
   }
 

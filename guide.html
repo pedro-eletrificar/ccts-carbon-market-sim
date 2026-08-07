@@ -3,51 +3,51 @@
 <style>
   :root {
     color-scheme: light;
-    --page: #f9f9f7;
-    --surface: #fcfcfb;
-    --surface-2: #ffffff;
-    --ink: #0b0b0b;
-    --ink-2: #52514e;
-    --muted: #898781;
-    --grid: #e1e0d9;
-    --baseline: #c3c2b7;
-    --border: rgba(11,11,11,0.10);
-    --accent: #c15a1e;
+    --page: #f5f9ff;
+    --surface: #ffffff;
+    --surface-2: #f1fbff;
+    --ink: #0a0e1a;
+    --ink-2: #3d4552;
+    --muted: #7a8699;
+    --grid: #dce7f5;
+    --baseline: #b9cbe8;
+    --border: rgba(0,51,204,0.14);
+    --accent: #0033cc;
     --accent-ink: #ffffff;
-    --price: #2a78d6;
-    --good: #0ca30c;
+    --price: #0033cc;
+    --good: #0f9e7a;
     --warning: #b8790a;
     --serious: #c1552f;
     --critical: #d03b3b;
     --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
-    --sans: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
-    --display: "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --sans: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --display: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
       color-scheme: dark;
-      --page: #0d0d0d; --surface: #1a1a19; --surface-2: #20201f;
-      --ink: #ffffff; --ink-2: #c3c2b7; --muted: #96938a;
-      --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.12);
-      --accent: #e88a4c; --accent-ink: #1a1005; --price: #3987e5;
-      --good: #2fc22f; --warning: #fab219; --serious: #ec835a; --critical: #e66767;
+      --page: #070b18; --surface: #0f1830; --surface-2: #16264d;
+      --ink: #ffffff; --ink-2: #c7d4ec; --muted: #8fa0c2;
+      --grid: #223258; --baseline: #2f4270; --border: rgba(255,255,255,0.14);
+      --accent: #5c86ff; --accent-ink: #071022; --price: #5c86ff;
+      --good: #34d6ac; --warning: #fab219; --serious: #ec835a; --critical: #e66767;
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #20201f;
-    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #96938a;
-    --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.12);
-    --accent: #e88a4c; --accent-ink: #1a1005; --price: #3987e5;
-    --good: #2fc22f; --warning: #fab219; --serious: #ec835a; --critical: #e66767;
+    --page: #070b18; --surface: #0f1830; --surface-2: #16264d;
+    --ink: #ffffff; --ink-2: #c7d4ec; --muted: #8fa0c2;
+    --grid: #223258; --baseline: #2f4270; --border: rgba(255,255,255,0.14);
+    --accent: #5c86ff; --accent-ink: #071022; --price: #5c86ff;
+    --good: #34d6ac; --warning: #fab219; --serious: #ec835a; --critical: #e66767;
   }
   :root[data-theme="light"] {
     color-scheme: light;
-    --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #ffffff;
-    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-    --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
-    --accent: #c15a1e; --accent-ink: #ffffff; --price: #2a78d6;
-    --good: #0ca30c; --warning: #b8790a; --serious: #c1552f; --critical: #d03b3b;
+    --page: #f5f9ff; --surface: #ffffff; --surface-2: #f1fbff;
+    --ink: #0a0e1a; --ink-2: #3d4552; --muted: #7a8699;
+    --grid: #dce7f5; --baseline: #b9cbe8; --border: rgba(0,51,204,0.14);
+    --accent: #0033cc; --accent-ink: #ffffff; --price: #0033cc;
+    --good: #0f9e7a; --warning: #b8790a; --serious: #c1552f; --critical: #d03b3b;
   }
 
   * { box-sizing: border-box; }
@@ -62,6 +62,14 @@
   .top-nav a { color: var(--ink-2); text-decoration: none; }
   .top-nav a:hover { color: var(--accent); }
   .top-nav .brand { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+  .top-nav .lockup { display: flex; align-items: center; gap: 0.55rem; }
+  .top-nav .mark {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    background: var(--accent); color: var(--accent-ink);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--display); font-weight: 800; font-size: 8.5px;
+  }
+  .top-nav .word { font-family: var(--display); font-weight: 800; font-size: 13px; color: var(--accent); }
 
   main { display: flex; justify-content: center; padding: 2.5rem 1.25rem 5rem; }
   .doc { width: 100%; max-width: 680px; }
@@ -123,8 +131,15 @@
 </style>
 
 <div class="top-nav">
-  <span class="brand">CCTS Carbon Market Simulator</span>
-  <a href="index.html">← Back to the simulator</a>
+  <div class="lockup">
+    <div class="mark">EDF</div>
+    <span class="word">Environmental Defense Fund</span>
+    <span class="brand">· CCTS Carbon Market Simulator</span>
+  </div>
+  <div style="display:flex;gap:1.1rem;">
+    <a href="test-guide.html">Testing Guide</a>
+    <a href="index.html">← Back to the simulator</a>
+  </div>
 </div>
 
 <main>
@@ -309,6 +324,6 @@
     </div>
 
     <a class="btn" href="index.html">← Back to the simulator</a>
-    <p class="footline">CCTS Carbon Market Simulator — a solo/AI-counterpart trading simulation of India's Carbon Credit Trading Scheme, modeled on the framework as publicly notified through February 2026.</p>
+    <p class="footline">An unofficial internal build for EDF (Environmental Defense Fund) testing — not a published EDF product. A trading simulation of India's Carbon Credit Trading Scheme, modeled on the framework as publicly notified through February 2026.</p>
   </article>
 </main>
