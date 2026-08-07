@@ -211,6 +211,21 @@
   .measure-row .m-name { font-weight: 600; font-size: 13.5px; }
   .measure-row .m-meta { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 
+  .seat-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.6rem 0.8rem; border-radius: 7px; gap: 0.75rem;
+    border: 1px solid var(--border);
+  }
+  .seat-row.mine { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .seat-row .s-sector { font-weight: 700; font-family: var(--display); font-size: 14px; }
+  .seat-row .s-who { font-size: 12.5px; color: var(--ink-2); }
+
+  .code-display {
+    font-family: var(--mono); font-weight: 700; font-size: 2.4rem; letter-spacing: 0.18em;
+    text-align: center; padding: 0.9rem; border-radius: 10px;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--accent);
+  }
+
   input[type="range"] { width: 100%; accent-color: var(--accent); }
   input[type="number"] {
     font-family: var(--mono); font-variant-numeric: tabular-nums;
@@ -246,39 +261,12 @@
 
 <div id="app"></div>
 
+<script src="engine.js"></script>
 <script>
 (function () {
   "use strict";
 
-  /* ---------- data ---------- */
-
-  var SECTORS = [
-    { id: "aluminium", name: "Aluminium", unit: "tonne primary Al", baseline: 13.5, fy26: 1.9, fy27: 7.06, margin: 2400, outMin: 40000, outMax: 90000 },
-    { id: "steel", name: "Iron & Steel", unit: "tonne crude steel", baseline: 2.3, fy26: 2.5, fy27: 6.0, margin: 1800, outMin: 150000, outMax: 400000 },
-    { id: "cement", name: "Cement", unit: "tonne cement", baseline: 0.68, fy26: 0.85, fy27: 7.6, margin: 900, outMin: 200000, outMax: 600000 },
-    { id: "chloralkali", name: "Chlor-Alkali", unit: "tonne caustic soda", baseline: 1.8, fy26: 1.32, fy27: 4.53, margin: 1500, outMin: 60000, outMax: 150000 },
-    { id: "pulp", name: "Pulp & Paper", unit: "tonne paper", baseline: 1.2, fy26: 7.0, fy27: 15.0, margin: 1100, outMin: 80000, outMax: 200000 },
-    { id: "fertilizer", name: "Fertilizer", unit: "tonne urea", baseline: 1.8, fy26: 2.0, fy27: 4.5, margin: 1300, outMin: 250000, outMax: 500000 },
-    { id: "refining", name: "Petroleum Refining", unit: "tonne throughput", baseline: 0.28, fy26: 2.2, fy27: 5.0, margin: 2000, outMin: 1000000, outMax: 3000000 },
-    { id: "petrochem", name: "Petrochemicals", unit: "tonne product", baseline: 1.0, fy26: 2.8, fy27: 5.5, margin: 1700, outMin: 100000, outMax: 250000 },
-    { id: "textiles", name: "Textiles", unit: "tonne fabric", baseline: 0.15, fy26: 2.0, fy27: 3.5, margin: 600, outMin: 50000, outMax: 120000 }
-  ];
-
-  var DISCLOSED_SECTORS = { aluminium: 1, cement: 1, chloralkali: 1, pulp: 1 };
-
-  var ARCHETYPES = [
-    { id: "efficient", name: "Efficient Incumbent", desc: "Already lean. Low starting intensity, but the cheap fixes are gone — further cuts cost more.", baselineMult: 0.85, costMult: 1.4, potentialMult: 0.7 },
-    { id: "midpack", name: "Mid-Pack Operator", desc: "Sector-average intensity and a balanced abatement cost curve.", baselineMult: 1.0, costMult: 1.0, potentialMult: 1.0 },
-    { id: "laggard", name: "Legacy Laggard", desc: "High starting intensity, but plenty of cheap headroom — early cuts are inexpensive.", baselineMult: 1.2, costMult: 0.7, potentialMult: 1.4 }
-  ];
-
-  var BOT_STRATEGIES = ["complier", "banker", "frontloader", "laggard_payer"];
-  var BOT_STRATEGY_LABEL = { complier: "Cost-Minimizing Complier", banker: "Banker / Speculator", frontloader: "Aggressive Early-Abater", laggard_payer: "Laggard Penalty-Payer" };
-
-  var MEASURE_COST_TIERS = [400, 1200, 2800, 5500];
-  var MEASURE_FRACTION_TIERS = [0.02, 0.035, 0.05, 0.07];
-  var PRICE_FLOOR = 500;
-  var PRICE_CEIL = 6000;
+  /* ---------- formatters (SECTORS/ARCHETYPES/engine functions now come from engine.js) ---------- */
 
   var money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
   var moneyInt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -287,190 +275,8 @@
   function cr(v) { return "₹" + money.format(v / 1e7) + " Cr"; }
   function rupee(v) { return "₹" + moneyInt.format(Math.round(v)); }
   function pct(v) { return num2.format(v) + "%"; }
-  function rnd(min, max) { return min + Math.random() * (max - min); }
-  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
-
-  /* ---------- entity generation ---------- */
-
-  function makeMeasures(ownBaseline, archetype, variance) {
-    variance = variance == null ? 0.1 : variance;
-    var measures = [];
-    for (var i = 0; i < 4; i++) {
-      var fraction = MEASURE_FRACTION_TIERS[i] * archetype.potentialMult * rnd(1 - variance, 1 + variance);
-      var costPerT = MEASURE_COST_TIERS[i] * archetype.costMult * rnd(1 - variance, 1 + variance);
-      var reductionPerUnit = fraction * ownBaseline;
-      measures.push({
-        label: ["Efficiency Retrofit", "Fuel/Process Switch", "Advanced Capture", "Deep Process Redesign"][i],
-        costPerTonne: costPerT,
-        reductionPerUnit: reductionPerUnit
-      });
-    }
-    return measures;
-  }
-
-  function generateCompany(sector, archetype, isPlayer, strategy, variance, idOverride) {
-    var ownBaseline = sector.baseline * archetype.baselineMult * rnd(0.95, 1.05);
-    var output = Math.round(rnd(sector.outMin, sector.outMax));
-    return {
-      id: idOverride || sector.id,
-      sectorId: sector.id,
-      sectorName: sector.name,
-      unit: sector.unit,
-      name: (isPlayer ? "Your " : "") + sector.name + " Works",
-      isPlayer: !!isPlayer,
-      archetypeId: archetype.id,
-      archetypeName: archetype.name,
-      strategy: strategy || null,
-      baselineIntensity: ownBaseline,
-      output: output,
-      margin: sector.margin,
-      measures: makeMeasures(ownBaseline, archetype, variance),
-      activatedCount: 0,
-      bank: 0,
-      totalProfit: 0,
-      history: []
-    };
-  }
-
-  function targetIntensity(company, sector, year) {
-    var reductionPct = year === 1 ? sector.fy26 : sector.fy27;
-    return company.baselineIntensity * (1 - reductionPct / 100);
-  }
-
-  function cumulativeReduction(company, count) {
-    var r = 0;
-    for (var i = 0; i < count; i++) r += company.measures[i].reductionPerUnit;
-    return r;
-  }
-
-  function newMeasuresCost(company, fromCount, toCount) {
-    var cost = 0;
-    for (var i = fromCount; i < toCount; i++) {
-      cost += company.measures[i].costPerTonne * company.measures[i].reductionPerUnit * company.output;
-    }
-    return cost;
-  }
-
-  /* ---------- bot logic ---------- */
-
-  function botChooseAbatement(company, sector, year, priceGuess) {
-    var target = targetIntensity(company, sector, year);
-    var from = company.activatedCount;
-    var count = from;
-    if (company.strategy === "frontloader") {
-      count = year === 1 ? Math.max(from, 3) : 4;
-    } else if (company.strategy === "banker") {
-      count = from;
-      while (count < 4 && company.measures[count].costPerTonne <= priceGuess * 1.1) count++;
-    } else if (company.strategy === "laggard_payer") {
-      count = Math.min(from + 1, 1);
-    } else {
-      // complier: activate just enough to hit target with a small buffer
-      count = from;
-      while (count < 4) {
-        var reduced = cumulativeReduction(company, count);
-        var intensity = company.baselineIntensity - reduced;
-        if (intensity <= target * 1.02) break;
-        count++;
-      }
-    }
-    return clamp(count, from, 4);
-  }
-
-  function botChooseOrder(company, surplusDeficit, priceGuess) {
-    // Per-firm price jitter: without it every firm in a strategy bucket names the exact
-    // same price, so an auction's clearing price collapses to one of a handful of fixed
-    // multiples of priceGuess — fine for a single solo-mode opponent mix, but it flattens
-    // the Monte Carlo simulator's price band to a near-flat line across trials.
-    var jitter = rnd(0.88, 1.12);
-    if (surplusDeficit > 0) {
-      var sellQty, minPrice;
-      if (company.strategy === "banker") { sellQty = surplusDeficit * 0.35; minPrice = priceGuess * 1.15; }
-      else if (company.strategy === "frontloader") { sellQty = surplusDeficit * 0.9; minPrice = priceGuess * 0.85; }
-      else { sellQty = surplusDeficit * 0.7; minPrice = priceGuess * 0.95; }
-      return { side: "sell", qty: sellQty, limitPrice: clamp(minPrice * jitter, PRICE_FLOOR, PRICE_CEIL) };
-    } else if (surplusDeficit < 0) {
-      var shortfall = -surplusDeficit;
-      var afterBank = Math.max(0, shortfall - company.bank);
-      if (afterBank <= 0) return null;
-      var buyQty, maxPrice;
-      if (company.strategy === "laggard_payer") { buyQty = afterBank * 0.3; maxPrice = priceGuess * 0.7; }
-      else if (company.strategy === "banker") { buyQty = afterBank * 0.5; maxPrice = priceGuess * 0.9; }
-      else { buyQty = afterBank * 0.85; maxPrice = priceGuess * 1.2; }
-      return { side: "buy", qty: buyQty, limitPrice: clamp(maxPrice * jitter, PRICE_FLOOR, PRICE_CEIL) };
-    }
-    return null;
-  }
-
-  /* ---------- auction ---------- */
-
-  function clearAuction(orders, priorPrice) {
-    var bids = orders.filter(function (o) { return o.side === "buy" && o.qty > 0; }).sort(function (a, b) { return b.limitPrice - a.limitPrice; });
-    var asks = orders.filter(function (o) { return o.side === "sell" && o.qty > 0; }).sort(function (a, b) { return a.limitPrice - b.limitPrice; });
-    if (!bids.length || !asks.length) {
-      return { clearingPrice: clamp(priorPrice, PRICE_FLOOR, PRICE_CEIL), fills: {}, matchedTotal: 0, bids: bids, asks: asks };
-    }
-    // Cumulative qty prefix sums: bids sorted desc by price, asks sorted asc by price.
-    var bidCum = [], askCum = [], acc = 0;
-    for (var bi = 0; bi < bids.length; bi++) { acc += bids[bi].qty; bidCum.push(acc); }
-    acc = 0;
-    for (var ai = 0; ai < asks.length; ai++) { acc += asks[ai].qty; askCum.push(acc); }
-    function demandAt(p) {
-      // largest index where bids[idx].limitPrice >= p (bids sorted desc -> that prefix is contiguous from 0)
-      var lo = 0, hi = bids.length - 1, ans = -1;
-      while (lo <= hi) { var mid = (lo + hi) >> 1; if (bids[mid].limitPrice >= p) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
-      return ans >= 0 ? bidCum[ans] : 0;
-    }
-    function supplyAt(p) {
-      var lo = 0, hi = asks.length - 1, ans = -1;
-      while (lo <= hi) { var mid = (lo + hi) >> 1; if (asks[mid].limitPrice <= p) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
-      return ans >= 0 ? askCum[ans] : 0;
-    }
-    var bestPrice = null, bestQty = -1;
-    asks.forEach(function (a) {
-      var p = a.limitPrice;
-      var matched = Math.min(demandAt(p), supplyAt(p));
-      if (matched > bestQty) { bestQty = matched; bestPrice = p; }
-    });
-    if (bestPrice === null || bestQty <= 0) {
-      return { clearingPrice: clamp(priorPrice, PRICE_FLOOR, PRICE_CEIL), fills: {}, matchedTotal: 0, bids: bids, asks: asks };
-    }
-    var clearingPrice = clamp(bestPrice, PRICE_FLOOR, PRICE_CEIL);
-    var fills = {};
-    var remaining = bestQty;
-    bids.forEach(function (b) {
-      if (remaining <= 0 || b.limitPrice < clearingPrice - 1e-9) return;
-      var q = Math.min(b.qty, remaining);
-      fills[b.companyId] = (fills[b.companyId] || 0) + q;
-      remaining -= q;
-    });
-    remaining = bestQty;
-    asks.forEach(function (a) {
-      if (remaining <= 0 || a.limitPrice > clearingPrice + 1e-9) return;
-      var q = Math.min(a.qty, remaining);
-      fills[a.companyId] = (fills[a.companyId] || 0) + q;
-      remaining -= q;
-    });
-    return { clearingPrice: clearingPrice, fills: fills, matchedTotal: bestQty, bids: bids, asks: asks };
-  }
 
   /* ---------- batch / Monte Carlo simulator ---------- */
-
-  function weightedPick(items, weights) {
-    var total = 0;
-    for (var i = 0; i < weights.length; i++) total += weights[i];
-    if (total <= 0) return items[Math.floor(Math.random() * items.length)];
-    var r = Math.random() * total, acc = 0;
-    for (i = 0; i < items.length; i++) { acc += weights[i]; if (r <= acc) return items[i]; }
-    return items[items.length - 1];
-  }
-
-  function percentile(sortedArr, p) {
-    if (!sortedArr.length) return 0;
-    var idx = clamp(Math.round((p / 100) * (sortedArr.length - 1)), 0, sortedArr.length - 1);
-    return sortedArr[idx];
-  }
 
   function runSimTrial(cfg) {
     var firms = [];
@@ -620,9 +426,160 @@
 
   var VARIANCE_LEVELS = { low: 0.05, medium: 0.10, high: 0.25 };
 
-  function sectorById(id) { return SECTORS.filter(function (s) { return s.id === id; })[0]; }
   function companyById(id) { return G.companies.filter(function (c) { return c.id === id; })[0]; }
   function player() { return companyById(G.playerId); }
+
+  /* ---------- multiplayer client ---------- */
+
+  var MP = {
+    code: null,
+    hostToken: null,
+    mySeat: null,
+    myName: null,
+    state: null,
+    pollHandle: null,
+    entryError: null,
+    joinDraft: { code: "", name: "" },
+    seatDraft: { seat: null, name: "", archetypeId: "midpack" },
+    abateDraft: 0,
+    tradeDraft: { qty: 0, limitPrice: PRICE_FLOOR },
+    busy: false
+  };
+
+  function mpStorageKey(code) { return "cctsMp:" + code; }
+
+  function mpSaveSession() {
+    if (!MP.code) return;
+    try {
+      sessionStorage.setItem(mpStorageKey(MP.code), JSON.stringify({ hostToken: MP.hostToken, mySeat: MP.mySeat, myName: MP.myName }));
+      sessionStorage.setItem("cctsMpLast", MP.code);
+    } catch (e) { /* storage unavailable — session just won't survive a refresh */ }
+  }
+
+  function mpLoadSession(code) {
+    try {
+      var raw = sessionStorage.getItem(mpStorageKey(code));
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  async function mpApi(action, payload) {
+    var body = Object.assign({ action: action }, payload || {});
+    var res = await fetch("/api/room", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || ("Request failed (" + res.status + ")"));
+    return data;
+  }
+
+  async function mpFetchState(code) {
+    var res = await fetch("/api/room?code=" + encodeURIComponent(code));
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || ("Request failed (" + res.status + ")"));
+    return data.state;
+  }
+
+  function mpStopPolling() {
+    if (MP.pollHandle) { clearInterval(MP.pollHandle); MP.pollHandle = null; }
+  }
+
+  function mpStartPolling() {
+    mpStopPolling();
+    MP.pollHandle = setInterval(function () {
+      if (!MP.code) return;
+      mpFetchState(MP.code).then(function (state) {
+        if (!state) return;
+        if (!MP.state || state.version !== MP.state.version) {
+          MP.state = state;
+          if (G.screen === "mp") render();
+        }
+      }).catch(function () { /* transient network error — next poll retries */ });
+    }, 2000);
+  }
+
+  function mpReset() {
+    mpStopPolling();
+    MP.code = null; MP.hostToken = null; MP.mySeat = null; MP.myName = null; MP.state = null; MP.entryError = null;
+  }
+
+  function mpMyCompany() {
+    return MP.state && MP.mySeat ? MP.state.companies[MP.mySeat] : null;
+  }
+
+  async function mpCreateRoom() {
+    MP.busy = true; MP.entryError = null; render();
+    try {
+      var data = await mpApi("create", {});
+      MP.code = data.code; MP.hostToken = data.hostToken; MP.state = data.state;
+      mpSaveSession();
+      mpStartPolling();
+    } catch (e) { MP.entryError = e.message; }
+    MP.busy = false; render();
+  }
+
+  async function mpJoinRoomLookup() {
+    var code = (MP.joinDraft.code || "").trim().toUpperCase();
+    if (!code) { MP.entryError = "Enter a room code"; render(); return; }
+    MP.busy = true; MP.entryError = null; render();
+    try {
+      var state = await mpFetchState(code);
+      MP.code = code; MP.state = state;
+      var saved = mpLoadSession(code);
+      if (saved && state.seats[saved.mySeat] && state.seats[saved.mySeat].claimedBy === saved.myName) {
+        MP.hostToken = saved.hostToken; MP.mySeat = saved.mySeat; MP.myName = saved.myName;
+      }
+      mpSaveSession();
+      mpStartPolling();
+    } catch (e) { MP.entryError = e.message; }
+    MP.busy = false; render();
+  }
+
+  async function mpClaimSeat(seat) {
+    var name = (MP.seatDraft.name || "").trim();
+    if (!name) { MP.entryError = "Enter your name first"; render(); return; }
+    MP.busy = true; MP.entryError = null; render();
+    try {
+      var data = await mpApi("join", { code: MP.code, seat: seat, name: name, archetypeId: MP.seatDraft.archetypeId });
+      MP.state = data.state; MP.mySeat = seat; MP.myName = name;
+      mpSaveSession();
+    } catch (e) { MP.entryError = e.message; }
+    MP.busy = false; render();
+  }
+
+  async function mpStartGame() {
+    MP.busy = true; render();
+    try {
+      var data = await mpApi("startGame", { code: MP.code, hostToken: MP.hostToken });
+      MP.state = data.state;
+    } catch (e) { MP.entryError = e.message; }
+    MP.busy = false; render();
+  }
+
+  async function mpAdvancePhase() {
+    MP.busy = true; render();
+    try {
+      var data = await mpApi("advancePhase", { code: MP.code, hostToken: MP.hostToken });
+      MP.state = data.state;
+    } catch (e) { MP.entryError = e.message; }
+    MP.busy = false; render();
+  }
+
+  async function mpSubmitAbatement() {
+    MP.busy = true; render();
+    try {
+      var data = await mpApi("submitAbatement", { code: MP.code, seat: MP.mySeat, activatedCount: MP.abateDraft });
+      MP.state = data.state;
+    } catch (e) { MP.entryError = e.message; }
+    MP.busy = false; render();
+  }
+
+  async function mpSubmitOrder() {
+    MP.busy = true; render();
+    try {
+      var data = await mpApi("submitOrder", { code: MP.code, seat: MP.mySeat, qty: MP.tradeDraft.qty, limitPrice: MP.tradeDraft.limitPrice });
+      MP.state = data.state;
+    } catch (e) { MP.entryError = e.message; }
+    MP.busy = false; render();
+  }
 
   function startGame() {
     var sector = sectorById(G.draft.sectorId);
@@ -844,12 +801,12 @@
       '</div>' + svg;
   }
 
-  function priceTrajectoryChart(w) {
+  function priceTrajectoryChart(w, points) {
     w = w || 520;
     var h = 200;
     var padL = 48, padR = 16, padT = 18, padB = 30;
     var innerW = w - padL - padR, innerH = h - padT - padB;
-    var pts = G.priceHistory;
+    var pts = points || G.priceHistory;
     var maxP = Math.max(PRICE_CEIL, 1) * 1.05;
     var minP = 0;
     var xScale = function (i) { return pts.length > 1 ? padL + (i / (pts.length - 1)) * innerW : padL + innerW / 2; };
@@ -953,6 +910,7 @@
       case "simsetup": return renderSimSetup();
       case "simrunning": return renderSimRunning();
       case "simresults": return renderSimResults();
+      case "mp": return renderMultiplayer();
       default: return "";
     }
   }
@@ -978,7 +936,10 @@
           '<div><h3 style="margin:0;">Market Simulator</h3><p style="margin:0.25rem 0 0;">Batch-forecast market outcomes across hundreds of simulated firms and trials under a behavioral mix you configure. No manual play — set parameters, run, read the forecast.</p></div>' +
           '<button class="btn btn-ghost" data-action="goto-simsetup" style="align-self:flex-start;">Configure & Run →</button>' +
         '</div>' +
-        '<div class="card" style="flex:1;min-width:240px;opacity:0.6;"><h3 style="margin:0;">Live Multiplayer</h3><p style="margin:0.25rem 0 0;">Gather real operators, one per sector, on a shared exchange. Coming next.</p></div>' +
+        '<div class="card stack" style="flex:1;min-width:280px;">' +
+          '<div><h3 style="margin:0;">Live Multiplayer</h3><p style="margin:0.25rem 0 0;">Gather real operators, one per sector, on a shared exchange — host a room, share the code, everyone claims a seat.</p></div>' +
+          '<button class="btn btn-ghost" data-action="goto-mp" style="align-self:flex-start;">Host or Join a Room →</button>' +
+        '</div>' +
       '</div>' +
       '<p class="foot-note">Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali and Pulp & Paper are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Company-level financials are illustrative.</p>' +
     '</div>';
@@ -1404,6 +1365,284 @@
     return html;
   }
 
+  /* ---------- render: live multiplayer ---------- */
+
+  function mpErrorBanner() {
+    if (!MP.entryError) return "";
+    return '<div class="card" style="border-color:var(--critical);"><p style="margin:0;color:var(--critical);">' + escapeHtml(MP.entryError) + '</p></div>';
+  }
+
+  function renderMultiplayer() {
+    if (!MP.code || !MP.state) return renderMpEntry();
+    switch (MP.state.phase) {
+      case "lobby": return renderMpLobby();
+      case "briefing": return renderMpBriefing();
+      case "abatement": return renderMpAbatement();
+      case "trading": return renderMpTrading();
+      case "settlement": return renderMpSettlement();
+      case "summary": return renderMpSummary();
+      default: return "";
+    }
+  }
+
+  function renderMpEntry() {
+    var last = null;
+    try { last = sessionStorage.getItem("cctsMpLast"); } catch (e) {}
+    return '<div class="wrap-narrow stack">' +
+      '<div class="eyebrow">Live Multiplayer</div>' +
+      '<h2>Host or join a room</h2>' +
+      '<p>Each player claims one of the nine CCTS sectors on a shared exchange. Unclaimed sectors are auto-filled by AI operators when the host starts the game.</p>' +
+      mpErrorBanner() +
+      '<div class="card stack">' +
+        '<h3 style="margin:0;">Host a new room</h3>' +
+        '<p style="margin:0;">You\'ll get a 4-letter code to share with the rest of the group.</p>' +
+        '<button class="btn" data-action="mp-create" style="align-self:flex-start;"' + (MP.busy ? " disabled" : "") + '>Create Room →</button>' +
+      '</div>' +
+      '<div class="card stack">' +
+        '<h3 style="margin:0;">Join a room</h3>' +
+        '<label class="field">Room code<input type="text" id="mp-code-input" maxlength="4" style="text-transform:uppercase;font-family:var(--mono);font-size:1.1rem;letter-spacing:0.1em;" value="' + escapeHtml(MP.joinDraft.code) + '" placeholder="ABCD" /></label>' +
+        '<button class="btn" data-action="mp-join-lookup" style="align-self:flex-start;"' + (MP.busy ? " disabled" : "") + '>Join Room →</button>' +
+        (last ? '<button class="btn btn-ghost btn-sm" data-action="mp-rejoin-last" style="align-self:flex-start;">Rejoin last room (' + escapeHtml(last) + ') →</button>' : "") +
+      '</div>' +
+      '<div class="row" style="justify-content:flex-start;"><button class="btn btn-ghost" data-action="back-landing">← Back</button></div>' +
+    '</div>';
+  }
+
+  function mpRoster(highlightPhase) {
+    var subs = MP.state.submissions || { abatement: {}, trading: {} };
+    return '<div class="card stack"><h3 style="margin:0;">Roster</h3><div class="stack" style="gap:0.5rem;">' +
+      SECTORS.map(function (s) {
+        var seat = MP.state.seats[s.id];
+        var mine = MP.mySeat === s.id;
+        var who = seat.claimedBy ? escapeHtml(seat.claimedBy) : "Open seat (AI-filled at start)";
+        var statusPill = "";
+        if (highlightPhase === "abatement" && seat.claimedBy) {
+          statusPill = subs.abatement[s.id] != null ? '<span class="pill pill-good">Submitted</span>' : '<span class="pill pill-warn">Waiting</span>';
+        } else if (highlightPhase === "trading" && seat.claimedBy) {
+          statusPill = subs.trading[s.id] ? '<span class="pill pill-good">Submitted</span>' : '<span class="pill pill-warn">Waiting</span>';
+        } else if (!seat.claimedBy) {
+          statusPill = '<span class="pill pill-warn">AI</span>';
+        }
+        return '<div class="seat-row' + (mine ? " mine" : "") + '"><div><div class="s-sector">' + s.name + '</div><div class="s-who">' + who + '</div></div>' + statusPill + '</div>';
+      }).join("") +
+    '</div></div>';
+  }
+
+  function renderMpLobby() {
+    var isHost = !!MP.hostToken;
+    var claimedCount = SECTORS.filter(function (s) { return MP.state.seats[s.id].claimedBy; }).length;
+    var html = '<div class="wrap grid-2">' +
+      '<div class="stack">' +
+        '<div class="card stack"><h3 style="margin:0;">Room code</h3><div class="code-display">' + MP.code + '</div>' +
+          '<p class="muted" style="margin:0;">Share this code — anyone can join at the Live Multiplayer screen.</p></div>' +
+        (MP.mySeat ? '<div class="card"><p style="margin:0;">You\'re <strong>' + escapeHtml(MP.myName) + '</strong>, operating <strong>' + sectorById(MP.mySeat).name + '</strong>.</p></div>' : "") +
+      '</div>' +
+      '<div class="stack">' +
+        '<h2>Lobby</h2>' +
+        mpErrorBanner() +
+        (MP.mySeat ? "" :
+          '<div class="card stack">' +
+            '<h3 style="margin:0;">Claim a seat</h3>' +
+            '<label class="field">Your name<input type="text" id="mp-name-input" maxlength="40" value="' + escapeHtml(MP.seatDraft.name) + '" /></label>' +
+            '<div class="archetype-grid">' + ARCHETYPES.map(function (a) {
+              var sel = MP.seatDraft.archetypeId === a.id;
+              return '<button class="arche-tile' + (sel ? " selected" : "") + '" data-action="mp-pick-archetype" data-id="' + a.id + '"><div class="at-name">' + a.name + '</div><div class="at-desc">' + a.desc + '</div></button>';
+            }).join("") + '</div>' +
+          '</div>'
+        ) +
+        '<div class="sector-grid">' + SECTORS.map(function (s) {
+          var seat = MP.state.seats[s.id];
+          var canClaim = !seat.claimedBy && !MP.mySeat;
+          return '<div class="sector-tile' + (MP.mySeat === s.id ? " selected" : "") + '" style="' + (canClaim ? "cursor:pointer;" : "cursor:default;opacity:" + (seat.claimedBy ? "1" : "0.55") + ";") + '"' + (canClaim ? ' data-action="mp-claim-seat" data-id="' + s.id + '"' : "") + '>' +
+            '<div class="st-name">' + s.name + '</div>' +
+            '<div class="st-meta">' + (seat.claimedBy ? "Claimed — " + escapeHtml(seat.claimedBy) : "Open") + '</div>' +
+          '</div>';
+        }).join("") + '</div>' +
+        '<div class="row" style="justify-content:space-between;align-items:center;">' +
+          '<span class="muted">' + claimedCount + ' of 9 seats claimed</span>' +
+          (isHost
+            ? '<button class="btn" data-action="mp-start-game"' + (MP.busy ? " disabled" : "") + '>Start Game →</button>'
+            : '<span class="muted">Waiting for the host to start…</span>') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+    return html;
+  }
+
+  function mpStepsBar(current) {
+    var order = ["briefing", "abatement", "trading", "settlement"];
+    var labels = { briefing: "Target Briefing", abatement: "Abatement Plan", trading: "Exchange", settlement: "Settlement" };
+    var idx = order.indexOf(current);
+    return '<div class="steps">' + order.map(function (s, i) {
+      var cls = i === idx ? "on" : (i < idx ? "done" : "");
+      return '<span class="step ' + cls + '">' + (i + 1) + "  " + labels[s] + '</span>';
+    }).join("") + '</div>';
+  }
+
+  function mpHeader() {
+    var yearLabel = MP.state.year === 1 ? "FY 2025-26" : "FY 2026-27";
+    return '<div class="eyebrow">Room ' + MP.code + ' · Compliance Period ' + MP.state.year + ' of 2 · ' + yearLabel + '</div>';
+  }
+
+  function mpAdvanceControl(label) {
+    if (!MP.hostToken) return '<span class="muted">Waiting for the host to advance…</span>';
+    return '<button class="btn" data-action="mp-advance"' + (MP.busy ? " disabled" : "") + '>' + label + '</button>';
+  }
+
+  function renderMpBriefing() {
+    var mine = mpMyCompany();
+    var sector = mine ? sectorById(mine.sectorId) : null;
+    var html = '<div class="wrap grid-2">' +
+      '<div class="stack">' + mpRoster() + '</div>' +
+      '<div class="stack">' +
+        mpStepsBar("briefing") + mpHeader() +
+        '<h2>Target notified</h2>' +
+        mpErrorBanner() +
+        (mine
+          ? '<div class="card stack"><p>Your entity-level target for this period:</p>' +
+            '<div class="kpi-row">' +
+              '<div class="kpi"><span class="kv">' + num2.format(mine.baselineIntensity) + '</span><span class="kl">FY23-24 Baseline</span></div>' +
+              '<div class="kpi"><span class="kv">' + num2.format(targetIntensity(mine, sector, MP.state.year)) + '</span><span class="kl">Target Intensity</span></div>' +
+            '</div></div>'
+          : '<div class="card"><p style="margin:0;">You\'re spectating this room — no seat claimed.</p></div>') +
+        '<div class="row" style="justify-content:flex-end;">' + mpAdvanceControl("Open Abatement Window →") + '</div>' +
+      '</div>' +
+    '</div>';
+    return html;
+  }
+
+  function renderMpAbatement() {
+    var mine = mpMyCompany();
+    if (!mine) {
+      return '<div class="wrap grid-2"><div class="stack">' + mpRoster("abatement") + '</div><div class="stack">' + mpStepsBar("abatement") + mpHeader() + '<div class="card"><p style="margin:0;">Spectating — waiting for operators to plan their abatement.</p></div>' + '<div class="row" style="justify-content:flex-end;">' + mpAdvanceControl("Open Exchange →") + '</div></div></div>';
+    }
+    if (MP.abateDraftYear !== MP.state.year) { MP.abateDraft = mine.activatedCount; MP.abateDraftYear = MP.state.year; }
+    var sector = sectorById(mine.sectorId);
+    var target = targetIntensity(mine, sector, MP.state.year);
+    var alreadySubmitted = MP.state.submissions.abatement[MP.mySeat] != null;
+    var count = alreadySubmitted ? MP.state.submissions.abatement[MP.mySeat] : MP.abateDraft;
+    var reduced = cumulativeReduction(mine, count);
+    var actual = mine.baselineIntensity - reduced;
+    var capex = newMeasuresCost(mine, mine.activatedCount, count);
+    var html = '<div class="wrap grid-2">' +
+      '<div class="stack">' + mpRoster("abatement") + '</div>' +
+      '<div class="stack">' +
+        mpStepsBar("abatement") + mpHeader() +
+        '<h2>Abatement plan</h2>' +
+        mpErrorBanner() +
+        '<div class="chart-card">' + bulletChart(actual, target, mine.baselineIntensity) + '</div>' +
+        '<div class="card stack" id="mp-measure-list">' + measureRows(mine, count) + '</div>' +
+        (alreadySubmitted
+          ? '<div class="card"><p style="margin:0;">Submitted — ' + count + ' measure(s) active. You can still change this until the host advances.</p></div>'
+          : "") +
+        '<input type="range" min="0" max="4" step="1" value="' + count + '" id="mp-abate-slider" />' +
+        '<div class="row" style="justify-content:space-between;">' +
+          '<div class="kpi"><span class="kv" id="mp-abate-capex">' + cr(capex) + '</span><span class="kl">Capex This Period</span></div>' +
+          '<div class="kpi"><span class="kv" id="mp-abate-intensity" style="color:' + (actual <= target ? "var(--good)" : "var(--critical)") + '">' + num2.format(actual) + '</span><span class="kl">Resulting Intensity</span></div>' +
+        '</div>' +
+        '<div class="row" style="justify-content:space-between;">' +
+          '<button class="btn btn-ghost" data-action="mp-submit-abatement"' + (MP.busy ? " disabled" : "") + '>' + (alreadySubmitted ? "Update Submission" : "Submit Plan") + '</button>' +
+          mpAdvanceControl("Open Exchange →") +
+        '</div>' +
+      '</div>' +
+    '</div>';
+    return html;
+  }
+
+  function renderMpTrading() {
+    var mine = mpMyCompany();
+    var yd = MP.state.yearData[MP.state.year] || {};
+    if (!mine) {
+      return '<div class="wrap grid-2"><div class="stack">' + mpRoster("trading") + '</div><div class="stack">' + mpStepsBar("trading") + mpHeader() + '<div class="card"><p style="margin:0;">Spectating — waiting for operators to trade.</p></div>' + '<div class="row" style="justify-content:flex-end;">' + mpAdvanceControl("Settle →") + '</div></div></div>';
+    }
+    var ab = yd.abate ? yd.abate[MP.mySeat] : null;
+    if (!ab) return '<div class="wrap"><p>Waiting for abatement to resolve…</p></div>';
+    if (MP.tradeDraftYear !== MP.state.year) { MP.tradeDraft = { qty: 0, limitPrice: PRICE_FLOOR }; MP.tradeDraftYear = MP.state.year; }
+    var sd = ab.surplusDeficit;
+    var isSeller = sd >= 0;
+    var maxQty = isSeller ? Math.max(0, sd) : Math.max(0, -sd - mine.bank);
+    var already = MP.state.submissions.trading[MP.mySeat];
+    var priceGuess = MP.state.priceHistory.length ? MP.state.priceHistory[MP.state.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+    var html = '<div class="wrap grid-2">' +
+      '<div class="stack">' + mpRoster("trading") +
+        '<div class="card"><h3 style="margin-top:0;">Your position</h3><div class="kpi-row">' +
+          '<div class="kpi"><span class="kv">' + num2.format(Math.abs(sd)) + '</span><span class="kl">tCO2e ' + (isSeller ? "Surplus" : "Deficit") + '</span></div>' +
+          '<div class="kpi"><span class="kv">' + moneyInt.format(Math.round(mine.bank)) + '</span><span class="kl">Bank</span></div>' +
+        '</div></div>' +
+      '</div>' +
+      '<div class="stack">' +
+        mpStepsBar("trading") + mpHeader() +
+        '<h2>Exchange</h2>' +
+        mpErrorBanner() +
+        '<div class="card stack">' +
+          '<div class="row">' +
+            '<label class="field" style="flex:1;">Quantity to ' + (isSeller ? "sell" : "buy") + ' (of ' + moneyInt.format(Math.round(maxQty)) + ')' +
+              '<input type="number" id="mp-trade-qty" min="0" max="' + Math.round(maxQty) + '" value="' + Math.round(already ? already.qty : MP.tradeDraft.qty) + '" /></label>' +
+            '<label class="field" style="flex:1;">' + (isSeller ? "Minimum price" : "Maximum price") + ' (₹/tCO2e)' +
+              '<input type="number" id="mp-trade-price" min="' + PRICE_FLOOR + '" max="' + PRICE_CEIL + '" value="' + Math.round(already ? already.limitPrice : MP.tradeDraft.limitPrice) + '" /></label>' +
+          '</div>' +
+          '<p class="muted" style="margin:0;">Reference price: ' + rupee(priceGuess) + '/tCO2e.' + (already ? " Submitted — you can still update until the host advances." : "") + '</p>' +
+        '</div>' +
+        '<div class="row" style="justify-content:space-between;">' +
+          '<button class="btn btn-ghost" data-action="mp-submit-order"' + (MP.busy ? " disabled" : "") + '>' + (already ? "Update Order" : "Submit Order") + '</button>' +
+          mpAdvanceControl("Settle →") +
+        '</div>' +
+      '</div>' +
+    '</div>';
+    return html;
+  }
+
+  function renderMpSettlement() {
+    var mine = mpMyCompany();
+    var yd = MP.state.yearData[MP.state.year] || {};
+    var ranked = Object.keys(MP.state.companies).map(function (id) { return MP.state.companies[id]; }).sort(function (a, b) { return b.totalProfit - a.totalProfit; });
+    var rec = mine && yd.settled ? yd.settled[MP.mySeat] : null;
+    var html = '<div class="wrap grid-2">' +
+      '<div class="stack">' + mpRoster() + '</div>' +
+      '<div class="stack">' +
+        mpStepsBar("settlement") + mpHeader() +
+        '<h2>Settlement</h2>' +
+        mpErrorBanner() +
+        (yd.auction ? '<div class="chart-card"><h3 style="margin-top:0;">Auction crossing</h3>' + crossingChart(yd.auction) + '</div>' : "") +
+        (rec ? '<div class="card stack">' +
+          '<div class="row" style="justify-content:space-between;align-items:center;">' +
+            '<span class="pill ' + (rec.penalty > 0.01 ? "pill-bad" : "pill-good") + '">' + (rec.penalty > 0.01 ? "Non-compliant" : "Compliant") + '</span>' +
+            '<span class="muted">Cleared at ' + rupee(yd.auction.clearingPrice) + '/tCO2e</span>' +
+          '</div>' +
+          '<div class="table-wrap"><table><tbody>' +
+            settleRow("Target vs. actual intensity", num2.format(rec.target) + " vs " + num2.format(rec.actual)) +
+            settleRow("Surplus / (deficit)", num2.format(rec.surplusDeficit) + " tCO2e") +
+            settleRow("Penalty (2× price)", rec.penalty > 0.01 ? cr(rec.penalty) : "—") +
+            settleRow("Net profit this period", cr(rec.yearProfit)) +
+          '</tbody></table></div>' +
+        '</div>' : "") +
+        '<div class="card"><h3 style="margin-top:0;">Standings</h3>' + leaderboardChart(ranked) + '</div>' +
+        '<div class="row" style="justify-content:flex-end;">' + mpAdvanceControl(MP.state.year === 1 ? "Advance to FY 2026-27 →" : "View Final Results →") + '</div>' +
+      '</div>' +
+    '</div>';
+    return html;
+  }
+
+  function renderMpSummary() {
+    var ranked = Object.keys(MP.state.companies).map(function (id) { return MP.state.companies[id]; }).sort(function (a, b) { return b.totalProfit - a.totalProfit; });
+    var mine = mpMyCompany();
+    var rank = mine ? ranked.indexOf(mine) + 1 : null;
+    var html = '<div class="wrap stack">' +
+      '<div class="eyebrow">Room ' + MP.code + ' · Compliance period closed</div>' +
+      '<h1>Final results</h1>' +
+      (mine ? '<div class="row">' +
+        '<div class="card" style="flex:1;min-width:200px;"><div class="kpi"><span class="kv">#' + rank + ' of 9</span><span class="kl">Your Rank</span></div></div>' +
+        '<div class="card" style="flex:1;min-width:200px;"><div class="kpi"><span class="kv">' + cr(mine.totalProfit) + '</span><span class="kl">Your Cumulative Profit</span></div></div>' +
+      '</div>' : "") +
+      '<div class="row" style="align-items:flex-start;">' +
+        '<div class="chart-card" style="flex:1;min-width:320px;"><h3 style="margin-top:0;">CCC clearing price by period</h3>' + priceTrajectoryChart(520, MP.state.priceHistory) + '</div>' +
+        '<div class="card" style="flex:1;min-width:320px;"><h3 style="margin-top:0;">Nine-operator leaderboard</h3>' + leaderboardChart(ranked) + '</div>' +
+      '</div>' +
+      '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="mp-leave">Leave Room →</button></div>' +
+    '</div>';
+    return html;
+  }
+
   /* ---------- events ---------- */
 
   function bindEvents() {
@@ -1425,6 +1664,29 @@
       else if (action === "goto-simsetup") { goToSimSetup(); }
       else if (action === "run-simulation") { launchSimulation(); }
       else if (action === "pick-variance") { G.simConfig.varianceLabel = el.getAttribute("data-id"); render(); }
+      else if (action === "goto-mp") { mpReset(); G.screen = "mp"; render(); }
+      else if (action === "mp-create") { mpCreateRoom(); }
+      else if (action === "mp-join-lookup") {
+        var codeEl = document.getElementById("mp-code-input");
+        if (codeEl) MP.joinDraft.code = codeEl.value;
+        mpJoinRoomLookup();
+      }
+      else if (action === "mp-rejoin-last") {
+        var lastCode = null;
+        try { lastCode = sessionStorage.getItem("cctsMpLast"); } catch (err) {}
+        if (lastCode) { MP.joinDraft.code = lastCode; mpJoinRoomLookup(); }
+      }
+      else if (action === "mp-pick-archetype") { MP.seatDraft.archetypeId = el.getAttribute("data-id"); render(); }
+      else if (action === "mp-claim-seat") {
+        var nameEl = document.getElementById("mp-name-input");
+        if (nameEl) MP.seatDraft.name = nameEl.value;
+        mpClaimSeat(el.getAttribute("data-id"));
+      }
+      else if (action === "mp-start-game") { mpStartGame(); }
+      else if (action === "mp-advance") { mpAdvancePhase(); }
+      else if (action === "mp-submit-abatement") { mpSubmitAbatement(); }
+      else if (action === "mp-submit-order") { mpSubmitOrder(); }
+      else if (action === "mp-leave") { mpReset(); G.screen = "landing"; render(); }
     };
     var slider = document.getElementById("abate-slider");
     if (slider) {
@@ -1476,6 +1738,33 @@
         });
       };
     });
+
+    var mpCodeEl = document.getElementById("mp-code-input");
+    if (mpCodeEl) mpCodeEl.oninput = function () { MP.joinDraft.code = mpCodeEl.value.toUpperCase(); };
+    var mpNameEl = document.getElementById("mp-name-input");
+    if (mpNameEl) mpNameEl.oninput = function () { MP.seatDraft.name = mpNameEl.value; };
+
+    var mpAbateSlider = document.getElementById("mp-abate-slider");
+    if (mpAbateSlider) {
+      mpAbateSlider.oninput = function () {
+        MP.abateDraft = parseInt(mpAbateSlider.value, 10);
+        var mine = mpMyCompany();
+        var sector = sectorById(mine.sectorId);
+        var target = targetIntensity(mine, sector, MP.state.year);
+        var reduced = cumulativeReduction(mine, MP.abateDraft);
+        var actual = mine.baselineIntensity - reduced;
+        var capex = newMeasuresCost(mine, mine.activatedCount, MP.abateDraft);
+        document.getElementById("mp-abate-capex").textContent = cr(capex);
+        var intensityEl = document.getElementById("mp-abate-intensity");
+        intensityEl.textContent = num2.format(actual);
+        intensityEl.style.color = actual <= target ? "var(--good)" : "var(--critical)";
+        document.getElementById("mp-measure-list").innerHTML = measureRows(mine, MP.abateDraft);
+      };
+    }
+    var mpQtyEl = document.getElementById("mp-trade-qty");
+    var mpPriceEl = document.getElementById("mp-trade-price");
+    if (mpQtyEl) mpQtyEl.oninput = function () { MP.tradeDraft.qty = parseFloat(mpQtyEl.value) || 0; };
+    if (mpPriceEl) mpPriceEl.oninput = function () { MP.tradeDraft.limitPrice = parseFloat(mpPriceEl.value) || PRICE_FLOOR; };
   }
 
   render();
