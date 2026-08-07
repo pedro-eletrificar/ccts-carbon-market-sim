@@ -215,6 +215,7 @@
   .pill-good { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
   .pill-warn { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning); }
   .pill-bad { background: color-mix(in srgb, var(--critical) 16%, transparent); color: var(--critical); }
+  .pill-idle { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--muted); }
   .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
   .measure-row {
@@ -223,6 +224,7 @@
     border: 1px solid var(--border);
   }
   .measure-row.active { border-color: var(--good); background: color-mix(in srgb, var(--good) 8%, var(--surface)); }
+  .measure-row.pending { border-color: var(--warning); background: color-mix(in srgb, var(--warning) 7%, var(--surface)); }
   .measure-row .m-name { font-weight: 600; font-size: 13.5px; }
   .measure-row .m-meta { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 
@@ -290,6 +292,7 @@
   function cr(v) { return "₹" + money.format(v / 1e7) + " Cr"; }
   function rupee(v) { return "₹" + moneyInt.format(Math.round(v)); }
   function pct(v) { return num2.format(v) + "%"; }
+  function fyLabel(year) { return "FY 20" + (24 + year) + "-" + (25 + year); }
 
   /* ---------- batch / Monte Carlo simulator ---------- */
 
@@ -306,32 +309,14 @@
     var priceHistory = [];
     var yearMetrics = [];
 
-    for (var year = 1; year <= 2; year++) {
+    for (var year = 1; year <= TOTAL_YEARS; year++) {
       var priceGuess = priceHistory.length ? priceHistory[priceHistory.length - 1] : (PRICE_FLOOR + PRICE_CEIL) / 2;
-      var abate = {};
-      firms.forEach(function (c) {
-        var sector = sectorById(c.sectorId);
-        var newCount = botChooseAbatement(c, sector, year, priceGuess);
-        var target = targetIntensity(c, sector, year);
-        var reduced = cumulativeReduction(c, newCount);
-        var actualIntensity = c.baselineIntensity - reduced;
-        var emissions = actualIntensity * c.output;
-        var allowance = target * c.output;
-        c.activatedCount = newCount;
-        abate[c.id] = { actualIntensity: actualIntensity, target: target, emissions: emissions, allowance: allowance, surplusDeficit: allowance - emissions };
-      });
-
-      var orders = [];
-      firms.forEach(function (c) {
-        var sd = abate[c.id].surplusDeficit;
-        var o = botChooseOrder(c, sd, priceGuess);
-        if (o && o.qty > 0.5) orders.push({ companyId: c.id, side: o.side, qty: o.qty, limitPrice: o.limitPrice });
-      });
-      var auction = clearAuction(orders, priceGuess);
-      priceHistory.push(auction.clearingPrice);
+      var abate = resolveAbatement(firms, year, priceGuess, botChooseAbatement);
+      var trading = resolveTrading(firms, abate, priceGuess, botChooseOrder, year);
+      priceHistory.push(trading.auction.clearingPrice);
 
       var m = {
-        year: year, price: auction.clearingPrice,
+        year: year, price: trading.auction.clearingPrice,
         requiredAbatement: 0, actualAbatement: 0,
         coveredByBank: 0, coveredByMarket: 0, penalizedTonnes: 0,
         compliantCount: 0, firmCount: firms.length,
@@ -341,30 +326,15 @@
 
       firms.forEach(function (c) {
         var ab = abate[c.id];
-        var sd = ab.surplusDeficit;
-        var filled = auction.fills[c.id] || 0;
-        var bankUsed = 0, bought = 0, sold = 0, penaltyTonnes = 0, bankedNow = 0;
-        if (sd >= 0) {
-          sold = filled;
-          bankedNow = sd - filled;
-          c.bank += bankedNow;
-        } else {
-          var shortfall = -sd;
-          bankUsed = Math.min(c.bank, shortfall);
-          c.bank -= bankUsed;
-          var remaining = shortfall - bankUsed;
-          bought = Math.min(filled, remaining);
-          var stillShort = remaining - bought;
-          if (stillShort > 0.01) penaltyTonnes = stillShort;
-        }
+        var rec = trading.settled[c.id];
         var req = (c.baselineIntensity - ab.target) * c.output;
-        var act = cumulativeReduction(c, c.activatedCount) * c.output;
+        var act = (c.baselineIntensity - ab.actualIntensity) * c.output;
         m.requiredAbatement += req;
         m.actualAbatement += act;
-        m.coveredByBank += bankUsed;
-        m.coveredByMarket += bought;
-        m.penalizedTonnes += penaltyTonnes;
-        var compliant = penaltyTonnes <= 0.01;
+        m.coveredByBank += rec.bankUsed;
+        m.coveredByMarket += rec.bought;
+        m.penalizedTonnes += rec.penaltyTonnes;
+        var compliant = rec.penaltyTonnes <= 0.01;
         if (compliant) m.compliantCount++;
         var ss = m.sectorStats[c.sectorId];
         ss.total++; if (compliant) ss.compliant++;
@@ -376,11 +346,11 @@
   }
 
   function runSimulation(cfg) {
-    var perYear = [[], []];
+    var perYear = [];
+    for (var y = 0; y < TOTAL_YEARS; y++) perYear.push([]);
     for (var t = 0; t < cfg.trials; t++) {
       var ym = runSimTrial(cfg);
-      perYear[0].push(ym[0]);
-      perYear[1].push(ym[1]);
+      for (var y2 = 0; y2 < TOTAL_YEARS; y2++) perYear[y2].push(ym[y2]);
     }
     var result = { years: [], trials: cfg.trials };
     perYear.forEach(function (trialsForYear) {
@@ -622,26 +592,15 @@
 
   function confirmAbatement() {
     var yd = ensureYearData();
-    var sector = sectorById(player().sectorId);
-    G.companies.forEach(function (c) {
-      var s = sectorById(c.sectorId);
-      var priceGuess = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
-      var newCount = c.isPlayer ? clamp(G.abateDraft, c.activatedCount, 4) : botChooseAbatement(c, s, G.year, priceGuess);
-      var capex = newMeasuresCost(c, c.activatedCount, newCount);
-      var target = targetIntensity(c, s, G.year);
-      var reduced = cumulativeReduction(c, newCount);
-      var actualIntensity = c.baselineIntensity - reduced;
-      var emissions = actualIntensity * c.output;
-      var allowance = target * c.output;
-      c.activatedCount = newCount;
-      yd.abate[c.id] = { capex: capex, actualIntensity: actualIntensity, target: target, emissions: emissions, allowance: allowance, surplusDeficit: allowance - emissions };
+    var priceGuess = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+    yd.abate = resolveAbatement(G.companies, G.year, priceGuess, function (c, s, year, pg) {
+      return c.isPlayer ? clamp(G.abateDraft, c.activatedCount, 4) : botChooseAbatement(c, s, year, pg);
     });
     G.screen = "trading";
-    var priceGuess2 = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
     var pAbate = yd.abate[player().id];
     G.tradeDraft = pAbate.surplusDeficit >= 0
-      ? { qty: Math.round(pAbate.surplusDeficit * 0.7), limitPrice: Math.round(priceGuess2 * 0.95) }
-      : { qty: Math.round(Math.max(0, -pAbate.surplusDeficit - player().bank) * 0.85), limitPrice: Math.round(priceGuess2 * 1.15) };
+      ? { qty: Math.round(pAbate.surplusDeficit * 0.7), limitPrice: Math.round(priceGuess * 0.95) }
+      : { qty: Math.round(Math.max(0, -pAbate.surplusDeficit - player().bank) * 0.85), limitPrice: Math.round(priceGuess * 1.15) };
     render();
   }
 
@@ -653,56 +612,25 @@
   function submitTrading() {
     var yd = ensureYearData();
     var priceGuess = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
-    var orders = [];
-    G.companies.forEach(function (c) {
-      var sd = yd.abate[c.id].surplusDeficit;
+    var result = resolveTrading(G.companies, yd.abate, priceGuess, function (c, sd, pg) {
       if (c.isPlayer) {
         var qty = clamp(G.tradeDraft.qty, 0, sd >= 0 ? sd : Math.max(0, -sd - c.bank));
-        if (qty > 0) orders.push({ companyId: c.id, side: sd >= 0 ? "sell" : "buy", qty: qty, limitPrice: clamp(G.tradeDraft.limitPrice, PRICE_FLOOR, PRICE_CEIL) });
-      } else {
-        var o = botChooseOrder(c, sd, priceGuess);
-        if (o && o.qty > 0.5) orders.push({ companyId: c.id, side: o.side, qty: o.qty, limitPrice: o.limitPrice });
+        if (qty <= 0) return null;
+        return { side: sd >= 0 ? "sell" : "buy", qty: qty, limitPrice: clamp(G.tradeDraft.limitPrice, PRICE_FLOOR, PRICE_CEIL) };
       }
-    });
-    var auction = clearAuction(orders, priceGuess);
-    yd.orders = orders;
-    yd.auction = auction;
-    G.priceHistory.push({ year: G.year, price: auction.clearingPrice });
-
-    G.companies.forEach(function (c) {
-      var ab = yd.abate[c.id];
-      var sd = ab.surplusDeficit;
-      var filled = auction.fills[c.id] || 0;
-      var bankUsed = 0, bought = 0, sold = 0, penalty = 0, bankedNow = 0;
-      if (sd >= 0) {
-        sold = filled;
-        bankedNow = sd - filled;
-        c.bank += bankedNow;
-      } else {
-        var shortfall = -sd;
-        bankUsed = Math.min(c.bank, shortfall);
-        c.bank -= bankUsed;
-        var remaining = shortfall - bankUsed;
-        bought = Math.min(filled, remaining);
-        var stillShort = remaining - bought;
-        if (stillShort > 0.01) penalty = stillShort * 2 * auction.clearingPrice;
-      }
-      var revenue = c.margin * c.output;
-      var netTrade = sold * auction.clearingPrice - bought * auction.clearingPrice;
-      var yearProfit = revenue - ab.capex - penalty + netTrade;
-      c.totalProfit += yearProfit;
-      var rec = { year: G.year, target: ab.target, actual: ab.actualIntensity, surplusDeficit: sd, bankUsed: bankUsed, bought: bought, sold: sold, bankedNow: bankedNow, penalty: penalty, price: auction.clearingPrice, capex: ab.capex, yearProfit: yearProfit, bankEnd: c.bank };
-      c.history.push(rec);
-      yd.settled[c.id] = rec;
-    });
-
+      return botChooseOrder(c, sd, pg);
+    }, G.year);
+    yd.orders = result.orders;
+    yd.auction = result.auction;
+    yd.settled = result.settled;
+    G.priceHistory.push({ year: G.year, price: result.auction.clearingPrice });
     G.screen = "settlement";
     render();
   }
 
   function nextYear() {
-    if (G.year === 1) {
-      G.year = 2;
+    if (G.year < TOTAL_YEARS) {
+      G.year++;
       G.screen = "briefing";
     } else {
       G.screen = "summary";
@@ -889,7 +817,7 @@
 
   function ticker() {
     var lastPrice = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : null;
-    var yearLabel = G.year === 1 ? "FY 2025-26" : "FY 2026-27";
+    var yearLabel = fyLabel(G.year);
     var phaseLabel = { landing: "Lobby", setup: "Registration", briefing: "Briefing", abatement: "Abatement Window", trading: "Trading Window", settlement: "Settlement", summary: "Compliance Period Closed", simsetup: "Simulator Setup", simrunning: "Running Simulation", simresults: "Simulator Results" }[G.screen] || "";
     var html = '<div class="ticker">';
     html += '<span><span class="tk-label">Scheme</span><b>CCTS · Compliance Mechanism</b></span>';
@@ -947,7 +875,7 @@
     return '<div class="wrap-narrow stack">' +
       '<div class="eyebrow">India · Carbon Credit Trading Scheme · Compliance Mechanism</div>' +
       '<h1>Run a company inside India’s carbon market.</h1>' +
-      '<p>You will operate one of nine CCTS-obligated sectors through the FY 2025-26 and FY 2026-27 compliance years — set your own emission-intensity target trajectory, decide how much to spend on abatement, and trade Carbon Credit Certificates (CCCs) against eight AI-driven counterparts on a live exchange.</p>' +
+      '<p>You will operate one of nine CCTS-obligated sectors through a full three-year compliance cycle (FY 2025-26 through FY 2027-28) — set your own emission-intensity target trajectory, decide how much to spend on abatement (bigger investments take a year or more to actually land), and trade Carbon Credit Certificates (CCCs) against eight AI-driven counterparts on a live exchange.</p>' +
       '<div class="card stack">' +
         '<div class="row" style="justify-content:space-between;align-items:center;">' +
           '<div><h3 style="margin:0;">Solo vs. AI Operators</h3><p style="margin:0.25rem 0 0;">Playable now.</p></div>' +
@@ -983,6 +911,7 @@
         '<div class="st-name">' + s.name + '</div>' +
         '<div class="st-meta">Baseline ' + num2.format(s.baseline) + ' tCO2e/' + s.unit.replace("tonne ", "") + '</div>' +
         '<div class="st-meta">FY26 −' + pct(s.fy26) + ' · FY27 −' + pct(s.fy27) + (disclosed ? "" : " (illustrative)") + '</div>' +
+        '<div class="st-meta">FY28 −' + pct(s.fy28) + ' (extrapolated)</div>' +
       '</button>';
     });
     html += '</div>';
@@ -1025,13 +954,13 @@
     var p = player();
     var sec = sectorById(p.sectorId);
     var target = targetIntensity(p, sec, G.year);
-    var reductionPct = G.year === 1 ? sec.fy26 : sec.fy27;
-    var yearLabel = G.year === 1 ? "FY 2025-26" : "FY 2026-27";
+    var reductionPct = G.year === 1 ? sec.fy26 : G.year === 2 ? sec.fy27 : sec.fy28;
+    var yearLabel = fyLabel(G.year);
     return '<div class="wrap grid-2">' +
       '<div class="stack">' + sidebarCard() + '</div>' +
       '<div class="stack">' +
         stepsBar("briefing") +
-        '<div class="eyebrow">Compliance Period ' + G.year + ' of 2</div>' +
+        '<div class="eyebrow">Compliance Period ' + G.year + ' of ' + TOTAL_YEARS + '</div>' +
         '<h2>' + yearLabel + ' target notified</h2>' +
         '<div class="card stack">' +
           '<p>The Bureau of Energy Efficiency has notified your sector’s emission-intensity trajectory. Your entity-level target for ' + yearLabel + ':</p>' +
@@ -1052,7 +981,8 @@
     var sec = sectorById(p.sectorId);
     var target = targetIntensity(p, sec, G.year);
     var count = G.abateDraft;
-    var reduced = cumulativeReduction(p, count);
+    var effCount = previewEffectiveCount(p, count, G.year);
+    var reduced = cumulativeReduction(p, effCount);
     var actual = p.baselineIntensity - reduced;
     var capex = newMeasuresCost(p, p.activatedCount, count);
     var html = '<div class="wrap grid-2">' +
@@ -1060,9 +990,9 @@
       '<div class="stack">' +
         stepsBar("abatement") +
         '<h2>Abatement plan</h2>' +
-        '<p>Deploy measures cheapest-first. Investments carry forward for free in future years — only newly activated measures cost capital this period.</p>' +
+        '<p>Deploy measures cheapest-first. Investments carry forward for free once they land — but a commitment isn\'t instant: bigger measures take a year or more of lead time before they actually cut emissions, so the intensity below only counts what\'s really in effect this period.</p>' +
         '<div class="chart-card">' + bulletChart(actual, target, p.baselineIntensity) + '</div>' +
-        '<div class="card stack" id="measure-list">' + measureRows(p, count) + '</div>' +
+        '<div class="card stack" id="measure-list">' + measureRows(p, count, G.year) + '</div>' +
         '<input type="range" min="0" max="4" step="1" value="' + count + '" id="abate-slider" />' +
         '<div class="row" style="justify-content:space-between;">' +
           '<div class="kpi"><span class="kv" id="abate-capex">' + cr(capex) + '</span><span class="kl">Capex This Period</span></div>' +
@@ -1074,14 +1004,41 @@
     return html;
   }
 
-  function measureRows(p, activeCount) {
+  // `previewCount` is what the slider would commit if locked in right now (>= p.activatedCount).
+  // Already-committed measures keep their real commitYear/lead time; a newly-previewed
+  // measure is evaluated as if it committed this year, so a 0-lead measure shows as
+  // immediately active in the preview while a multi-year one shows its real ETA.
+  function previewEffectiveCount(p, previewCount, year) {
+    var n = 0;
+    for (var i = 0; i < previewCount; i++) {
+      var cy = i < p.activatedCount ? p.commitYear[i] : year;
+      if (year >= cy + MEASURE_LEAD_TIMES[i]) n++;
+      else break;
+    }
+    return n;
+  }
+
+  function measureRows(p, previewCount, year) {
     return p.measures.map(function (m, i) {
-      var active = i < activeCount;
-      var already = i < p.activatedCount;
-      return '<div class="measure-row' + (active ? " active" : "") + '">' +
+      var lead = MEASURE_LEAD_TIMES[i];
+      var committed = i < p.activatedCount;
+      var previewed = !committed && i < previewCount;
+      var effYear = committed ? p.commitYear[i] + lead : year + lead;
+      var isActiveNow = committed && year >= effYear;
+      var rowClass = "", pillClass = "pill-idle", label = "Idle";
+      if (isActiveNow) {
+        rowClass = "active"; pillClass = "pill-good"; label = "Active";
+      } else if (committed) {
+        rowClass = "pending"; pillClass = "pill-warn"; label = "Pending — effective " + fyLabel(effYear);
+      } else if (previewed) {
+        rowClass = "pending"; pillClass = "pill-warn";
+        label = lead > 0 ? "Will commit — effective " + fyLabel(effYear) : "Will commit — active this year";
+      }
+      var leadNote = lead > 0 ? " · " + lead + "-yr lead time" : " · same-year effect";
+      return '<div class="measure-row' + (rowClass ? " " + rowClass : "") + '">' +
         '<div><div class="m-name">' + (i + 1) + '. ' + m.label + '</div>' +
-        '<div class="m-meta">' + num2.format(m.reductionPerUnit) + ' tCO2e/unit cut · ' + rupee(m.costPerTonne) + '/tCO2e' + (already ? " · already active" : "") + '</div></div>' +
-        '<span class="pill ' + (active ? "pill-good" : "pill-warn") + '">' + (active ? "Active" : "Idle") + '</span>' +
+        '<div class="m-meta">' + num2.format(m.reductionPerUnit) + ' tCO2e/unit cut · ' + rupee(m.costPerTonne) + '/tCO2e' + leadNote + '</div></div>' +
+        '<span class="pill ' + pillClass + '">' + label + '</span>' +
       '</div>';
     }).join("");
   }
@@ -1126,7 +1083,7 @@
     var p = player();
     var rec = yd.settled[p.id];
     var auction = yd.auction;
-    var yearLabel = G.year === 1 ? "FY 2025-26" : "FY 2026-27";
+    var yearLabel = fyLabel(G.year);
     var ranked = G.companies.slice().sort(function (a, b) { return b.totalProfit - a.totalProfit; });
     var html = '<div class="wrap grid-2">' +
       '<div class="stack">' + sidebarCard() + '</div>' +
@@ -1152,7 +1109,7 @@
           '</tbody></table></div>' +
         '</div>' +
         '<div class="card"><h3 style="margin-top:0;">Market standings</h3>' + leaderboardChart(ranked) + '</div>' +
-        '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="next-year">' + (G.year === 1 ? "Advance to FY 2026-27 →" : "View Final Results →") + '</button></div>' +
+        '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="next-year">' + (G.year < TOTAL_YEARS ? "Advance to " + fyLabel(G.year + 1) + " →" : "View Final Results →") + '</button></div>' +
       '</div>' +
     '</div>';
     return html;
@@ -1164,29 +1121,29 @@
     var p = player();
     var ranked = G.companies.slice().sort(function (a, b) { return b.totalProfit - a.totalProfit; });
     var rank = ranked.indexOf(p) + 1;
-    var bothCompliant = p.history.every(function (h) { return h.penalty <= 0.01; });
+    var allCompliant = p.history.every(function (h) { return h.penalty <= 0.01; });
     var marketAbatement = G.companies.reduce(function (s, c) {
       var sec = sectorById(c.sectorId);
-      var t = targetIntensity(c, sec, 2);
+      var t = targetIntensity(c, sec, TOTAL_YEARS);
       return s + (c.baselineIntensity - t) * c.output;
     }, 0);
     var actualAbatement = G.companies.reduce(function (s, c) {
-      return s + (c.baselineIntensity - (c.baselineIntensity - cumulativeReduction(c, c.activatedCount))) * c.output;
+      return s + cumulativeReduction(c, effectiveCount(c, TOTAL_YEARS)) * c.output;
     }, 0);
     var html = '<div class="wrap stack">' +
-      '<div class="eyebrow">Compliance period closed · FY 2025-26 – FY 2026-27</div>' +
+      '<div class="eyebrow">Compliance period closed · ' + fyLabel(1) + ' – ' + fyLabel(TOTAL_YEARS) + '</div>' +
       '<h1>Final results</h1>' +
       '<div class="row">' +
         '<div class="card" style="flex:1;min-width:200px;"><div class="kpi"><span class="kv">#' + rank + ' of ' + G.companies.length + '</span><span class="kl">Market Rank by Profit</span></div></div>' +
         '<div class="card" style="flex:1;min-width:200px;"><div class="kpi"><span class="kv">' + cr(p.totalProfit) + '</span><span class="kl">Cumulative Profit</span></div></div>' +
-        '<div class="card" style="flex:1;min-width:200px;"><div class="kpi"><span class="kv" style="color:' + (bothCompliant ? "var(--good)" : "var(--critical)") + '">' + (bothCompliant ? "Fully Compliant" : "Penalized") + '</span><span class="kl">Two-Year Record</span></div></div>' +
+        '<div class="card" style="flex:1;min-width:200px;"><div class="kpi"><span class="kv" style="color:' + (allCompliant ? "var(--good)" : "var(--critical)") + '">' + (allCompliant ? "Fully Compliant" : "Penalized") + '</span><span class="kl">' + TOTAL_YEARS + '-Year Record</span></div></div>' +
       '</div>' +
       '<div class="row" style="align-items:flex-start;">' +
         '<div class="chart-card" style="flex:1;min-width:320px;"><h3 style="margin-top:0;">CCC clearing price by period</h3>' + priceTrajectoryChart() + '</div>' +
         '<div class="card" style="flex:1;min-width:320px;"><h3 style="margin-top:0;">Nine-operator leaderboard</h3>' + leaderboardChart(ranked) + '</div>' +
       '</div>' +
       '<div class="card"><h3 style="margin-top:0;">Market-wide abatement</h3>' +
-        '<p>Across all nine simulated operators, FY26-27 intensity targets implied ' + moneyInt.format(Math.round(marketAbatement)) + ' tCO2e/yr of required abatement versus baseline. The market actually delivered ' + moneyInt.format(Math.round(actualAbatement)) + ' tCO2e/yr (' + pct(marketAbatement ? (actualAbatement / marketAbatement) * 100 : 0) + ' of the required cut) once trading, banking and penalties settled.</p>' +
+        '<p>Across all nine simulated operators, ' + fyLabel(TOTAL_YEARS) + ' intensity targets implied ' + moneyInt.format(Math.round(marketAbatement)) + ' tCO2e/yr of required abatement versus baseline. The market actually delivered ' + moneyInt.format(Math.round(actualAbatement)) + ' tCO2e/yr (' + pct(marketAbatement ? (actualAbatement / marketAbatement) * 100 : 0) + ' of the required cut) once trading, banking, penalties and investment lead times settled.</p>' +
       '</div>' +
       '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="restart">Register a New Company →</button></div>' +
       '<p class="foot-note">Modeled on the CCTS as notified through February 2026. Sector baselines, abatement costs, output volumes and company financials are illustrative approximations for gameplay, not official BEE/CERC figures.</p>' +
@@ -1276,7 +1233,7 @@
     return '<div class="wrap-narrow stack" style="text-align:center;padding-top:3rem;">' +
       '<div class="eyebrow">Market Simulator</div>' +
       '<h2>Running ' + cfg.trials + ' trials…</h2>' +
-      '<p>Simulating ' + moneyInt.format(cfg.firmsPerSector * SECTORS.length) + ' operators across two compliance years, ' + cfg.trials + ' times over.</p>' +
+      '<p>Simulating ' + moneyInt.format(cfg.firmsPerSector * SECTORS.length) + ' operators across ' + TOTAL_YEARS + ' compliance years, ' + cfg.trials + ' times over.</p>' +
     '</div>';
   }
 
@@ -1369,16 +1326,22 @@
       '</div>' +
 
       '<div class="card"><h3 style="margin-top:0;">Sector breakdown</h3>' +
-      '<div class="table-wrap"><table><thead><tr><th>Sector</th><th class="num">FY26 Compliant</th><th class="num">FY27 Compliant</th><th class="num">FY26 Abatement</th><th class="num">FY27 Abatement</th></tr></thead><tbody>' +
+      '<div class="table-wrap"><table><thead><tr><th>Sector</th>' +
+        res.years.map(function (y) { return '<th class="num">FY' + (25 + y.year) + ' Compliant</th>'; }).join("") +
+        res.years.map(function (y) { return '<th class="num">FY' + (25 + y.year) + ' Abatement</th>'; }).join("") +
+      '</tr></thead><tbody>' +
         SECTORS.map(function (s) {
-          var y1 = res.years[0].sectorAgg[s.id], y2 = res.years[1].sectorAgg[s.id];
-          var c1 = y1.total ? (y1.compliant / y1.total) * 100 : 0, c2 = y2.total ? (y2.compliant / y2.total) * 100 : 0;
-          var a1 = y1.requiredCut ? (y1.actualCut / y1.requiredCut) * 100 : 0, a2 = y2.requiredCut ? (y2.actualCut / y2.requiredCut) * 100 : 0;
-          return '<tr><td><strong>' + s.name + '</strong></td>' +
-            '<td class="num" style="color:' + complianceStatColor(c1) + '">' + num2.format(c1) + '%</td>' +
-            '<td class="num" style="color:' + complianceStatColor(c2) + '">' + num2.format(c2) + '%</td>' +
-            '<td class="num">' + num2.format(a1) + '%</td>' +
-            '<td class="num">' + num2.format(a2) + '%</td></tr>';
+          var complianceCells = res.years.map(function (y) {
+            var ss = y.sectorAgg[s.id];
+            var c = ss.total ? (ss.compliant / ss.total) * 100 : 0;
+            return '<td class="num" style="color:' + complianceStatColor(c) + '">' + num2.format(c) + '%</td>';
+          }).join("");
+          var abateCells = res.years.map(function (y) {
+            var ss = y.sectorAgg[s.id];
+            var a = ss.requiredCut ? (ss.actualCut / ss.requiredCut) * 100 : 0;
+            return '<td class="num">' + num2.format(a) + '%</td>';
+          }).join("");
+          return '<tr><td><strong>' + s.name + '</strong></td>' + complianceCells + abateCells + '</tr>';
         }).join("") +
       '</tbody></table></div></div>' +
 
@@ -1506,8 +1469,8 @@
   }
 
   function mpHeader() {
-    var yearLabel = MP.state.year === 1 ? "FY 2025-26" : "FY 2026-27";
-    return '<div class="eyebrow">Room ' + MP.code + ' · Compliance Period ' + MP.state.year + ' of 2 · ' + yearLabel + '</div>';
+    var yearLabel = fyLabel(MP.state.year);
+    return '<div class="eyebrow">Room ' + MP.code + ' · Compliance Period ' + MP.state.year + ' of ' + TOTAL_YEARS + ' · ' + yearLabel + '</div>';
   }
 
   function mpAdvanceControl(label) {
@@ -1547,7 +1510,8 @@
     var target = targetIntensity(mine, sector, MP.state.year);
     var alreadySubmitted = MP.state.submissions.abatement[MP.mySeat] != null;
     var count = alreadySubmitted ? MP.state.submissions.abatement[MP.mySeat] : MP.abateDraft;
-    var reduced = cumulativeReduction(mine, count);
+    var effCount = previewEffectiveCount(mine, count, MP.state.year);
+    var reduced = cumulativeReduction(mine, effCount);
     var actual = mine.baselineIntensity - reduced;
     var capex = newMeasuresCost(mine, mine.activatedCount, count);
     var html = '<div class="wrap grid-2">' +
@@ -1555,11 +1519,12 @@
       '<div class="stack">' +
         mpStepsBar("abatement") + mpHeader() +
         '<h2>Abatement plan</h2>' +
+        '<p>Bigger measures take a year or more of lead time before they actually cut emissions — the intensity below only counts what\'s really in effect this period.</p>' +
         mpErrorBanner() +
         '<div class="chart-card">' + bulletChart(actual, target, mine.baselineIntensity) + '</div>' +
-        '<div class="card stack" id="mp-measure-list">' + measureRows(mine, count) + '</div>' +
+        '<div class="card stack" id="mp-measure-list">' + measureRows(mine, count, MP.state.year) + '</div>' +
         (alreadySubmitted
-          ? '<div class="card"><p style="margin:0;">Submitted — ' + count + ' measure(s) active. You can still change this until the host advances.</p></div>'
+          ? '<div class="card"><p style="margin:0;">Submitted — ' + count + ' measure(s) committed. You can still change this until the host advances.</p></div>'
           : "") +
         '<input type="range" min="0" max="4" step="1" value="' + count + '" id="mp-abate-slider" />' +
         '<div class="row" style="justify-content:space-between;">' +
@@ -1643,7 +1608,7 @@
           '</tbody></table></div>' +
         '</div>' : "") +
         '<div class="card"><h3 style="margin-top:0;">Standings</h3>' + leaderboardChart(ranked) + '</div>' +
-        '<div class="row" style="justify-content:flex-end;">' + mpAdvanceControl(MP.state.year === 1 ? "Advance to FY 2026-27 →" : "View Final Results →") + '</div>' +
+        '<div class="row" style="justify-content:flex-end;">' + mpAdvanceControl(MP.state.year < TOTAL_YEARS ? "Advance to " + fyLabel(MP.state.year + 1) + " →" : "View Final Results →") + '</div>' +
       '</div>' +
     '</div>';
     return html;
@@ -1721,14 +1686,15 @@
         var p = player();
         var sec = sectorById(p.sectorId);
         var target = targetIntensity(p, sec, G.year);
-        var reduced = cumulativeReduction(p, G.abateDraft);
+        var effCount = previewEffectiveCount(p, G.abateDraft, G.year);
+        var reduced = cumulativeReduction(p, effCount);
         var actual = p.baselineIntensity - reduced;
         var capex = newMeasuresCost(p, p.activatedCount, G.abateDraft);
         document.getElementById("abate-capex").textContent = cr(capex);
         var intensityEl = document.getElementById("abate-intensity");
         intensityEl.textContent = num2.format(actual);
         intensityEl.style.color = actual <= target ? "var(--good)" : "var(--critical)";
-        document.getElementById("measure-list").innerHTML = measureRows(p, G.abateDraft);
+        document.getElementById("measure-list").innerHTML = measureRows(p, G.abateDraft, G.year);
       };
     }
     var qtyEl = document.getElementById("trade-qty");
@@ -1777,14 +1743,15 @@
         var mine = mpMyCompany();
         var sector = sectorById(mine.sectorId);
         var target = targetIntensity(mine, sector, MP.state.year);
-        var reduced = cumulativeReduction(mine, MP.abateDraft);
+        var effCount = previewEffectiveCount(mine, MP.abateDraft, MP.state.year);
+        var reduced = cumulativeReduction(mine, effCount);
         var actual = mine.baselineIntensity - reduced;
         var capex = newMeasuresCost(mine, mine.activatedCount, MP.abateDraft);
         document.getElementById("mp-abate-capex").textContent = cr(capex);
         var intensityEl = document.getElementById("mp-abate-intensity");
         intensityEl.textContent = num2.format(actual);
         intensityEl.style.color = actual <= target ? "var(--good)" : "var(--critical)";
-        document.getElementById("mp-measure-list").innerHTML = measureRows(mine, MP.abateDraft);
+        document.getElementById("mp-measure-list").innerHTML = measureRows(mine, MP.abateDraft, MP.state.year);
       };
     }
     var mpQtyEl = document.getElementById("mp-trade-qty");

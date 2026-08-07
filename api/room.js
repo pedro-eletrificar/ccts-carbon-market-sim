@@ -221,8 +221,8 @@ async function actionAdvancePhase(req, res, body) {
     state.priceHistory.push({ year: state.year, price: trading.auction.clearingPrice });
     state.phase = "settlement";
   } else if (state.phase === "settlement") {
-    if (state.year === 1) {
-      state.year = 2;
+    if (state.year < engine.TOTAL_YEARS) {
+      state.year++;
       state.phase = "briefing";
     } else {
       state.phase = "summary";

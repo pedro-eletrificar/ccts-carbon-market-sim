@@ -4,19 +4,35 @@
    (api/room.js), so every mode resolves a compliance year identically.
    No DOM, no fetch, no globals beyond what's declared here. */
 
+// fy28 is not disclosed anywhere in the source deck (CCTS has only notified
+// FY25-26 and FY26-27 targets to date) — it's a linear extrapolation of each
+// sector's own fy26->fy27 trend, always flagged "(extrapolated)" in the UI
+// regardless of whether fy26/fy27 for that sector are real or illustrative.
 var SECTORS = [
-  { id: "aluminium", name: "Aluminium", unit: "tonne primary Al", baseline: 13.5, fy26: 1.9, fy27: 7.06, margin: 2400, outMin: 40000, outMax: 90000 },
-  { id: "steel", name: "Iron & Steel", unit: "tonne crude steel", baseline: 2.3, fy26: 2.5, fy27: 6.0, margin: 1800, outMin: 150000, outMax: 400000 },
-  { id: "cement", name: "Cement", unit: "tonne cement", baseline: 0.68, fy26: 0.85, fy27: 7.6, margin: 900, outMin: 200000, outMax: 600000 },
-  { id: "chloralkali", name: "Chlor-Alkali", unit: "tonne caustic soda", baseline: 1.8, fy26: 1.32, fy27: 4.53, margin: 1500, outMin: 60000, outMax: 150000 },
-  { id: "pulp", name: "Pulp & Paper", unit: "tonne paper", baseline: 1.2, fy26: 7.0, fy27: 15.0, margin: 1100, outMin: 80000, outMax: 200000 },
-  { id: "fertilizer", name: "Fertilizer", unit: "tonne urea", baseline: 1.8, fy26: 2.0, fy27: 4.5, margin: 1300, outMin: 250000, outMax: 500000 },
-  { id: "refining", name: "Petroleum Refining", unit: "tonne throughput", baseline: 0.28, fy26: 2.2, fy27: 5.0, margin: 2000, outMin: 1000000, outMax: 3000000 },
-  { id: "petrochem", name: "Petrochemicals", unit: "tonne product", baseline: 1.0, fy26: 2.8, fy27: 5.5, margin: 1700, outMin: 100000, outMax: 250000 },
-  { id: "textiles", name: "Textiles", unit: "tonne fabric", baseline: 0.15, fy26: 2.0, fy27: 3.5, margin: 600, outMin: 50000, outMax: 120000 }
+  { id: "aluminium", name: "Aluminium", unit: "tonne primary Al", baseline: 13.5, fy26: 1.9, fy27: 7.06, fy28: 12.22, margin: 2400, outMin: 40000, outMax: 90000 },
+  { id: "steel", name: "Iron & Steel", unit: "tonne crude steel", baseline: 2.3, fy26: 2.5, fy27: 6.0, fy28: 9.5, margin: 1800, outMin: 150000, outMax: 400000 },
+  { id: "cement", name: "Cement", unit: "tonne cement", baseline: 0.68, fy26: 0.85, fy27: 7.6, fy28: 14.35, margin: 900, outMin: 200000, outMax: 600000 },
+  { id: "chloralkali", name: "Chlor-Alkali", unit: "tonne caustic soda", baseline: 1.8, fy26: 1.32, fy27: 4.53, fy28: 7.74, margin: 1500, outMin: 60000, outMax: 150000 },
+  { id: "pulp", name: "Pulp & Paper", unit: "tonne paper", baseline: 1.2, fy26: 7.0, fy27: 15.0, fy28: 23.0, margin: 1100, outMin: 80000, outMax: 200000 },
+  { id: "fertilizer", name: "Fertilizer", unit: "tonne urea", baseline: 1.8, fy26: 2.0, fy27: 4.5, fy28: 7.0, margin: 1300, outMin: 250000, outMax: 500000 },
+  { id: "refining", name: "Petroleum Refining", unit: "tonne throughput", baseline: 0.28, fy26: 2.2, fy27: 5.0, fy28: 7.8, margin: 2000, outMin: 1000000, outMax: 3000000 },
+  { id: "petrochem", name: "Petrochemicals", unit: "tonne product", baseline: 1.0, fy26: 2.8, fy27: 5.5, fy28: 8.2, margin: 1700, outMin: 100000, outMax: 250000 },
+  { id: "textiles", name: "Textiles", unit: "tonne fabric", baseline: 0.15, fy26: 2.0, fy27: 3.5, fy28: 5.0, margin: 600, outMin: 50000, outMax: 120000 }
 ];
 
 var DISCLOSED_SECTORS = { aluminium: 1, cement: 1, chloralkali: 1, pulp: 1 };
+
+// The real CCTS notifies targets in 3-year blocks; this models one full
+// block (FY25-26, FY26-27, FY27-28) so banking has a real cycle to play out
+// across instead of stopping right when it would start mattering.
+var TOTAL_YEARS = 3;
+
+// Years between committing an abatement measure (capex paid, locked in) and
+// it actually reducing emissions — cheap retrofits land same-year, a deep
+// process redesign does not. Kept non-decreasing by tier: this is what lets
+// effectiveCount() below assume "first not-yet-effective measure means none
+// after it are effective either" without re-checking every tier.
+var MEASURE_LEAD_TIMES = [0, 1, 1, 2];
 
 var ARCHETYPES = [
   { id: "efficient", name: "Efficient Incumbent", desc: "Already lean. Low starting intensity, but the cheap fixes are gone — further cuts cost more.", baselineMult: 0.85, costMult: 1.4, potentialMult: 0.7 },
@@ -73,6 +89,7 @@ function generateCompany(sector, archetype, isPlayer, strategy, variance, idOver
     margin: sector.margin,
     measures: makeMeasures(ownBaseline, archetype, variance),
     activatedCount: 0,
+    commitYear: [null, null, null, null],
     bank: 0,
     totalProfit: 0,
     history: []
@@ -80,8 +97,24 @@ function generateCompany(sector, archetype, isPlayer, strategy, variance, idOver
 }
 
 function targetIntensity(company, sector, year) {
-  var reductionPct = year === 1 ? sector.fy26 : sector.fy27;
+  var reductionPct = year === 1 ? sector.fy26 : year === 2 ? sector.fy27 : sector.fy28;
   return company.baselineIntensity * (1 - reductionPct / 100);
+}
+
+// How many of a company's committed measures have actually landed by `year`,
+// vs. still being paid-for-but-not-yet-delivering. Committed measures are
+// always contiguous from index 0 (cheapest first) and commitYear is
+// non-decreasing by index, and MEASURE_LEAD_TIMES is non-decreasing too, so
+// effectiveYear-by-index is non-decreasing — the first not-yet-effective
+// measure means none after it are effective either, safe to stop there.
+function effectiveCount(company, year) {
+  var n = 0;
+  for (var i = 0; i < company.activatedCount; i++) {
+    var cy = company.commitYear[i];
+    if (cy != null && year >= cy + MEASURE_LEAD_TIMES[i]) n++;
+    else break;
+  }
+  return n;
 }
 
 function cumulativeReduction(company, count) {
@@ -222,15 +255,21 @@ function resolveAbatement(companies, year, priceGuess, decideAbatement) {
   var abate = {};
   companies.forEach(function (c) {
     var sector = sectorById(c.sectorId);
+    // Decision-making (bot or human) still reasons in terms of "measures
+    // committed," same as before lead times existed — it's the settlement
+    // math below that now only counts what's actually landed by this year,
+    // which is what makes naive reactive compliance genuinely risky.
     var newCount = decideAbatement(c, sector, year, priceGuess);
     var capex = newMeasuresCost(c, c.activatedCount, newCount);
+    for (var i = c.activatedCount; i < newCount; i++) c.commitYear[i] = year;
+    c.activatedCount = newCount;
     var target = targetIntensity(c, sector, year);
-    var reduced = cumulativeReduction(c, newCount);
+    var effCount = effectiveCount(c, year);
+    var reduced = cumulativeReduction(c, effCount);
     var actualIntensity = c.baselineIntensity - reduced;
     var emissions = actualIntensity * c.output;
     var allowance = target * c.output;
-    c.activatedCount = newCount;
-    abate[c.id] = { capex: capex, actualIntensity: actualIntensity, target: target, emissions: emissions, allowance: allowance, surplusDeficit: allowance - emissions };
+    abate[c.id] = { capex: capex, actualIntensity: actualIntensity, target: target, emissions: emissions, allowance: allowance, surplusDeficit: allowance - emissions, committedCount: newCount, effectiveCount: effCount };
   });
   return abate;
 }
@@ -249,7 +288,7 @@ function resolveTrading(companies, abate, priceGuess, decideOrder, year) {
     var ab = abate[c.id];
     var sd = ab.surplusDeficit;
     var filled = auction.fills[c.id] || 0;
-    var bankUsed = 0, bought = 0, sold = 0, penalty = 0, bankedNow = 0;
+    var bankUsed = 0, bought = 0, sold = 0, penalty = 0, penaltyTonnes = 0, bankedNow = 0;
     if (sd >= 0) {
       sold = filled;
       bankedNow = sd - filled;
@@ -261,13 +300,13 @@ function resolveTrading(companies, abate, priceGuess, decideOrder, year) {
       var remaining = shortfall - bankUsed;
       bought = Math.min(filled, remaining);
       var stillShort = remaining - bought;
-      if (stillShort > 0.01) penalty = stillShort * 2 * auction.clearingPrice;
+      if (stillShort > 0.01) { penalty = stillShort * 2 * auction.clearingPrice; penaltyTonnes = stillShort; }
     }
     var revenue = c.margin * c.output;
     var netTrade = sold * auction.clearingPrice - bought * auction.clearingPrice;
     var yearProfit = revenue - ab.capex - penalty + netTrade;
     c.totalProfit += yearProfit;
-    var rec = { year: year, target: ab.target, actual: ab.actualIntensity, surplusDeficit: sd, bankUsed: bankUsed, bought: bought, sold: sold, bankedNow: bankedNow, penalty: penalty, price: auction.clearingPrice, capex: ab.capex, yearProfit: yearProfit, bankEnd: c.bank };
+    var rec = { year: year, target: ab.target, actual: ab.actualIntensity, surplusDeficit: sd, bankUsed: bankUsed, bought: bought, sold: sold, bankedNow: bankedNow, penalty: penalty, penaltyTonnes: penaltyTonnes, price: auction.clearingPrice, capex: ab.capex, yearProfit: yearProfit, bankEnd: c.bank };
     c.history.push(rec);
     settled[c.id] = rec;
   });
@@ -280,11 +319,13 @@ if (typeof module !== "undefined" && module.exports) {
     SECTORS: SECTORS, DISCLOSED_SECTORS: DISCLOSED_SECTORS, ARCHETYPES: ARCHETYPES,
     BOT_STRATEGIES: BOT_STRATEGIES, BOT_STRATEGY_LABEL: BOT_STRATEGY_LABEL,
     MEASURE_COST_TIERS: MEASURE_COST_TIERS, MEASURE_FRACTION_TIERS: MEASURE_FRACTION_TIERS,
+    MEASURE_LEAD_TIMES: MEASURE_LEAD_TIMES, TOTAL_YEARS: TOTAL_YEARS,
     PRICE_FLOOR: PRICE_FLOOR, PRICE_CEIL: PRICE_CEIL,
     rnd: rnd, pick: pick, clamp: clamp,
     sectorById: sectorById, archetypeById: archetypeById,
     makeMeasures: makeMeasures, generateCompany: generateCompany,
     targetIntensity: targetIntensity, cumulativeReduction: cumulativeReduction, newMeasuresCost: newMeasuresCost,
+    effectiveCount: effectiveCount,
     botChooseAbatement: botChooseAbatement, botChooseOrder: botChooseOrder,
     clearAuction: clearAuction, weightedPick: weightedPick, percentile: percentile,
     resolveAbatement: resolveAbatement, resolveTrading: resolveTrading

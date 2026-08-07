@@ -177,7 +177,7 @@
     <h2 id="quickstart">2. Quick start</h2>
     <ol>
       <li><strong>Register a company.</strong> Pick one of the nine CCTS sectors, then pick a starting posture: Efficient Incumbent, Mid-Pack Operator, or Legacy Laggard.</li>
-      <li><strong>Play two compliance years</strong> — FY 2025-26, then the more stringent FY 2026-27 — each with an abatement decision and a trading window.</li>
+      <li><strong>Play a full three-year compliance cycle</strong> — FY 2025-26, FY 2026-27, and FY 2027-28, each stricter than the last — with an abatement decision and a trading window every year.</li>
       <li><strong>See where you land</strong> on the nine-operator leaderboard, ranked by cumulative profit, alongside eight AI-driven counterparts.</li>
     </ol>
 
@@ -194,23 +194,28 @@
     <p>There's a real strategic tension here: an efficient incumbent has less distance to its target in absolute terms, but each further tonne of abatement costs more — sometimes more than it's worth relative to just buying CCCs. A laggard has further to travel but can often get there cheaply. Neither posture is strictly better; it depends on how the market prices carbon.</p>
 
     <h2 id="year">4. The four phases of a compliance year</h2>
-    <p>Each of the two compliance years (FY 2025-26 and FY 2026-27) runs through the same four phases:</p>
+    <p>Each of the three compliance years (FY 2025-26, FY 2026-27, and FY 2027-28) runs through the same four phases:</p>
     <div class="phase-grid">
       <div class="phase-card"><span class="p-num">01</span><h4>Target Briefing</h4><p>BEE notifies your sector's intensity trajectory. You see your baseline, the required cumulative cut, and your resulting target intensity for the year.</p></div>
-      <div class="phase-card"><span class="p-num">02</span><h4>Abatement Plan</h4><p>Decide how many measures on your cost curve to activate. This sets your actual intensity and how much capital you spend this period.</p></div>
+      <div class="phase-card"><span class="p-num">02</span><h4>Abatement Plan</h4><p>Decide how many measures on your cost curve to commit to. This sets how much capital you spend this period — not necessarily your actual intensity, since bigger measures take time to land (see section 5).</p></div>
       <div class="phase-card"><span class="p-num">03</span><h4>Exchange</h4><p>Post a buy or sell order for CCCs. A uniform clearing price is set across all nine operators' orders, bounded by the price collar.</p></div>
       <div class="phase-card"><span class="p-num">04</span><h4>Settlement</h4><p>Trades execute, shortfalls are covered from your bank or penalized, surplus is sold or banked, and your profit for the period is booked.</p></div>
     </div>
-    <p>FY 2026-27's targets are always more demanding than FY 2025-26's — this mirrors CCTS's real phased trajectory, which tightens from roughly a 2-3% average cut in the first year to 3.3-7.5%+ in the second.</p>
+    <p>Each year's targets are more demanding than the last — this mirrors CCTS's real phased trajectory, which tightens from roughly a 2-3% average cut in FY25-26 to 3.3-7.5%+ in FY26-27. FY27-28 continues that trajectory (see section 11 for exactly how).</p>
 
     <h2 id="abatement">5. Reading your abatement cost curve</h2>
     <p>Every company has four abatement measures, ordered cheapest-to-most-expensive — a simplified <strong>marginal abatement cost curve (MACC)</strong>. Each measure shows two numbers: how much intensity it cuts (tCO2e per unit of output) and what it costs per tonne abated (₹/tCO2e).</p>
-    <p>The abatement slider activates measures in order — you can't skip to an expensive measure without first activating the cheaper ones ahead of it, which mirrors how real efficiency investment tends to work (the cheap retrofit happens before the expensive process redesign).</p>
+    <p>The abatement slider commits measures in order — you can't skip to an expensive measure without first committing the cheaper ones ahead of it, which mirrors how real efficiency investment tends to work (the cheap retrofit happens before the expensive process redesign).</p>
     <div class="callout good">
-      <span class="c-label">Investments are durable</span>
-      <p>Once a measure is activated, it keeps reducing your intensity in every following year for free — you only pay capital for <strong>newly</strong> activated measures each period. Front-loading abatement in Year 1 is a deliberate strategy: it locks in cheap cuts before Year 2's stricter target arrives.</p>
+      <span class="c-label">Investments are durable — but not instant</span>
+      <p>Once a measure is committed, the capital is spent immediately — but the emissions cut doesn't land right away for anything beyond the cheapest tier. Each measure has a lead time: the Efficiency Retrofit takes effect the same year, the Fuel/Process Switch and Advanced Capture take a year to come online, and the Deep Process Redesign takes two. A measure keeps reducing your intensity for free in every year after it lands, but until then you're paying for it without the benefit — which is exactly the risk a real capital project carries.</p>
     </div>
-    <p>Watch the bullet bar on the Abatement Plan screen: the filled bar is your actual intensity, the vertical mark is your target. Green means you're at or under target (a surplus); red means you're still short (a deficit you'll need to cover on the exchange).</p>
+    <p>The measure list shows you exactly where each one stands: <strong>Idle</strong> (not committed), <strong>Pending</strong> (committed, capital spent, still waiting on its lead time), or <strong>Active</strong> (actually cutting your emissions this year). The "Resulting Intensity" figure only ever counts what's Active — never what's merely committed.</p>
+    <div class="callout warn">
+      <span class="c-label">This is why front-loading matters</span>
+      <p>With a three-year cycle and up to a two-year lead time, committing your biggest measure in Year 2 or later may mean it never lands before the cycle ends — you'll have paid the capex with nothing to show for it this cycle. Committing early is a real bet on the trajectory ahead, not a free action.</p>
+    </div>
+    <p>Watch the bullet bar on the Abatement Plan screen: the filled bar is your actual (Active-only) intensity, the vertical mark is your target. Green means you're at or under target (a surplus); red means you're still short (a deficit you'll need to cover on the exchange).</p>
 
     <h2 id="exchange">6. How the exchange clears a price</h2>
     <p>CCTS trades CCCs through power exchanges under Central Electricity Regulatory Commission oversight, with a price collar mechanism planned. This simulator models that as a <strong>uniform-price call auction</strong>: every one of the nine operators — you and eight AI-driven counterparts — submits one order for the trading window, all at once. Sellers state a minimum acceptable price; buyers state a maximum they'll pay.</p>
@@ -228,7 +233,7 @@
       <li>Any surplus not sold is banked. <strong>Banking is unlimited and never expires; borrowing from a future year is never allowed</strong> — both match the real scheme.</li>
       <li>Your profit for the period is: production margin, minus this period's new abatement capex, minus net CCC spend (what you paid to buy, less what you earned selling), minus any penalty.</li>
     </ol>
-    <p>Cumulative profit across both years determines your rank on the nine-operator leaderboard at the end of the game.</p>
+    <p>Cumulative profit across all three years determines your rank on the nine-operator leaderboard at the end of the game.</p>
 
     <h2 id="operators">8. The other eight operators</h2>
     <p>The eight AI-driven companies are drawn from four recurring strategies, so the market has real texture rather than one uniform opponent:</p>
@@ -245,8 +250,9 @@
 
     <h2 id="strategy">9. Strategy notes</h2>
     <ul>
-      <li><strong>Check whether a measure is worth it before you activate it</strong> — compare its ₹/tCO2e cost to what CCCs are actually trading for. A measure priced above the market is cheaper to skip and buy your way out of instead.</li>
-      <li><strong>Front-loading is a bet on future prices.</strong> Abating hard in Year 1 costs capital now but banks CCCs against Year 2's stricter target — worthwhile if you expect the market to tighten.</li>
+      <li><strong>Check whether a measure is worth it before you commit it</strong> — compare its ₹/tCO2e cost to what CCCs are actually trading for. A measure priced above the market is cheaper to skip and buy your way out of instead.</li>
+      <li><strong>Front-loading is a bet on the whole trajectory, not just next year.</strong> Committing your Deep Process Redesign in Year 1 is close to the last moment it can still land before the cycle ends (2-year lead time, 3-year cycle) — wait too long and you're paying for a measure that never delivers this cycle.</li>
+      <li><strong>Lead time turns "reactive" compliance into a trap.</strong> Waiting until you see a deficit to commit a measure means that measure's cut arrives one or two years <em>after</em> the year you needed it — plan against next year's target, not this year's.</li>
       <li><strong>A big ask doesn't guarantee a sale.</strong> If your floor price sits above every buyer's ceiling, nothing trades and your surplus just gets banked instead — not a loss, but not realized cash either.</li>
       <li><strong>The penalty is a real backstop, not a bluff.</strong> At 2× the clearing price, letting a deficit ride to settlement is rarely cheaper than covering it on the exchange unless the market is asking an unusually high price.</li>
     </ul>
@@ -261,6 +267,8 @@
       <dd>Your FY2023-24 emission intensity — the fixed reference point every year's target is cut from.</dd>
       <dt>MACC — Marginal Abatement Cost Curve</dt>
       <dd>The ordered list of abatement measures available to a company, cheapest to most expensive.</dd>
+      <dt>Lead time</dt>
+      <dd>The delay between committing capital to an abatement measure and it actually cutting emissions — 0 to 2 years in this simulator, depending on the measure.</dd>
       <dt>Banking</dt>
       <dd>Carrying unsold surplus CCCs forward to a future compliance year. Unlimited under CCTS.</dd>
       <dt>Borrowing</dt>
@@ -283,17 +291,19 @@
     <p><strong>Grounded in the real scheme (as notified through February 2026):</strong></p>
     <ul>
       <li>The overall mechanism design — intensity-based baseline-and-credit, unlimited banking, no borrowing, 2× penalty, the two-tier compliance/offset structure.</li>
-      <li>The nine covered sectors and the FY2025-26 / FY2026-27 compliance period structure.</li>
-      <li>Disclosed sector reduction ranges for <strong>Aluminium, Cement, Chlor-Alkali, and Pulp & Paper</strong> — these are the actual notified ranges.</li>
+      <li>The nine covered sectors and the three-year notification-period structure — CCTS sets targets in 3-year blocks, which is why this simulator runs a full three-year cycle (FY25-26 through FY27-28) rather than stopping partway through one.</li>
+      <li>Disclosed sector reduction ranges for <strong>Aluminium, Cement, Chlor-Alkali, and Pulp & Paper</strong> for FY25-26 and FY26-27 — these are the actual notified ranges.</li>
     </ul>
     <p><strong>Illustrative, built for a playable game:</strong></p>
     <ul>
-      <li>Reduction targets for the other five sectors (Iron & Steel, Fertilizer, Petroleum Refining, Petrochemicals, Textiles) are interpolated within the disclosed overall envelope, not official BEE figures — flagged as "(illustrative)" wherever they appear.</li>
+      <li>Reduction targets for the other five sectors (Iron & Steel, Fertilizer, Petroleum Refining, Petrochemicals, Textiles) are interpolated within the disclosed overall envelope for FY25-26/FY26-27, not official BEE figures — flagged as "(illustrative)" wherever they appear.</li>
+      <li><strong>Every sector's FY27-28 target is extrapolated</strong>, not disclosed — CCTS has only notified two years of targets to date. It's a linear continuation of that sector's own FY26-to-FY27 trend, flagged "(extrapolated)" wherever it appears, for every sector including the four with real FY25-26/FY26-27 data.</li>
       <li>Every company's baseline intensity, output volume, production margin, and abatement cost curve are procedurally generated for gameplay balance, not sourced from real company disclosures.</li>
       <li>Targets in this simulator are computed by applying each sector's cumulative reduction percentage to each company's own baseline. The real CCTS sets entity-specific targets through a more detailed BEE process — this is a simplification.</li>
       <li>The ₹500–₹6,000/tCO2e price collar is a plausible illustrative range, not a published number — CCTS has stated a collar is planned but has not (as of this deck) published its bounds.</li>
+      <li><strong>Abatement measure lead times (0/1/1/2 years) are an illustrative approximation</strong>, not sourced from real project-delivery timelines for these sectors — real capex lead times vary enormously by technology and plant, and can run longer than what's modeled here.</li>
     </ul>
-    <p>If you have real marginal abatement cost data for specific companies, it can be substituted in for the procedural generator — ask for it to be added.</p>
+    <p>If you have real marginal abatement cost data or real investment lead times for specific companies, they can be substituted in for the procedural generator — ask for it to be added.</p>
 
     <h2 id="simulator">12. The Market Simulator mode</h2>
     <p>Where Solo vs. AI Operators has you playing one company by hand, the <strong>Market Simulator</strong> has no manual play at all — you configure the shape of the market and it runs the whole thing many times over, reporting a forecast rather than a single outcome.</p>
