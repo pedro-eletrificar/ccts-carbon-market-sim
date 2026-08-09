@@ -366,12 +366,13 @@
 
     var priceHistory = [];
     var yearMetrics = [];
+    var cbamConfig = { enabled: !!cfg.cbamEnabled, article9Recognized: !!cfg.cbamArticle9Recognized };
 
     for (var year = 1; year <= TOTAL_YEARS; year++) {
       var priceGuess = priceHistory.length ? priceHistory[priceHistory.length - 1] : (PRICE_FLOOR + PRICE_CEIL) / 2;
       var scenario = pickScenario();
       var abate = resolveAbatement(firms, year, priceGuess, botChooseAbatement, botChooseProduction, scenario);
-      var trading = resolveTrading(firms, abate, priceGuess, botChooseOrder, year);
+      var trading = resolveTrading(firms, abate, priceGuess, botChooseOrder, year, cbamConfig, botChooseCbam);
       priceHistory.push(trading.auction.clearingPrice);
 
       var m = {
@@ -379,6 +380,7 @@
         requiredAbatement: 0, actualAbatement: 0,
         coveredByBank: 0, coveredByMarket: 0, penalizedTonnes: 0,
         compliantCount: 0, firmCount: firms.length,
+        cbamCost: 0, cbamCertificates: 0, cbamExposedCount: 0,
         sectorStats: {}
       };
       SECTORS.forEach(function (s) { m.sectorStats[s.id] = { compliant: 0, total: 0, actualCut: 0, requiredCut: 0 }; });
@@ -395,6 +397,11 @@
         m.penalizedTonnes += rec.penaltyTonnes;
         var compliant = rec.penaltyTonnes <= 0.01;
         if (compliant) m.compliantCount++;
+        if (rec.cbam && rec.cbam.euShare > 0) {
+          m.cbamCost += rec.cbam.cbamCost + rec.cbam.verificationCost;
+          m.cbamCertificates += rec.cbam.certificates;
+          m.cbamExposedCount++;
+        }
         var ss = m.sectorStats[c.sectorId];
         ss.total++; if (compliant) ss.compliant++;
         ss.actualCut += act; ss.requiredCut += req;
@@ -421,6 +428,9 @@
       var marketTotal = trialsForYear.reduce(function (s, m) { return s + m.coveredByMarket; }, 0);
       var penaltyTotal = trialsForYear.reduce(function (s, m) { return s + m.penalizedTonnes; }, 0);
       var deficitTotal = bankTotal + marketTotal + penaltyTotal;
+      var cbamCostTotal = trialsForYear.reduce(function (s, m) { return s + m.cbamCost; }, 0);
+      var cbamCertTotal = trialsForYear.reduce(function (s, m) { return s + m.cbamCertificates; }, 0);
+      var cbamExposedTotal = trialsForYear.reduce(function (s, m) { return s + m.cbamExposedCount; }, 0);
       var sectorAgg = {};
       SECTORS.forEach(function (s) { sectorAgg[s.id] = { compliant: 0, total: 0, actualCut: 0, requiredCut: 0 }; });
       trialsForYear.forEach(function (m) {
@@ -440,6 +450,7 @@
         bankShare: deficitTotal ? bankTotal / deficitTotal * 100 : 0,
         marketShare: deficitTotal ? marketTotal / deficitTotal * 100 : 0,
         penaltyShare: deficitTotal ? penaltyTotal / deficitTotal * 100 : 0,
+        cbamCost: cbamCostTotal / cfg.trials, cbamCertificates: cbamCertTotal / cfg.trials, cbamExposedCount: cbamExposedTotal / cfg.trials,
         sectorAgg: sectorAgg
       });
     });
@@ -458,13 +469,17 @@
     draft: { sectorId: null, archetypeId: null },
     abateDraft: 0,
     productionDraft: 1,
+    cbamConfig: { enabled: false, article9Recognized: false },
+    cbamDraft: { euShare: 0.15, verify: true },
     tradeDraft: { qty: 0, limitPrice: PRICE_FLOOR },
     simConfig: {
       firmsPerSector: 15,
       archetypeWeights: [50, 50, 50],
       strategyWeights: [50, 50, 50, 50],
       varianceLabel: "medium",
-      trials: 50
+      trials: 50,
+      cbamEnabled: false,
+      cbamArticle9Recognized: false
     },
     simResult: null
   };
@@ -488,6 +503,7 @@
     seatDraft: { seat: null, name: "", archetypeId: "midpack" },
     abateDraft: 0,
     productionDraft: 1,
+    cbamDraft: { euShare: 0.15, verify: true },
     tradeDraft: { qty: 0, limitPrice: PRICE_FLOOR },
     busy: false
   };
@@ -600,6 +616,15 @@
     MP.busy = false; render();
   }
 
+  async function mpSetCbamConfig(enabled, article9Recognized) {
+    MP.busy = true; render();
+    try {
+      var data = await mpApi("setCbamConfig", { code: MP.code, hostToken: MP.hostToken, enabled: enabled, article9Recognized: article9Recognized });
+      MP.state = data.state;
+    } catch (e) { MP.entryError = e.message; }
+    MP.busy = false; render();
+  }
+
   async function mpAdvancePhase() {
     MP.busy = true; render();
     try {
@@ -612,7 +637,7 @@
   async function mpSubmitAbatement() {
     MP.busy = true; render();
     try {
-      var data = await mpApi("submitAbatement", { code: MP.code, seat: MP.mySeat, activatedCount: MP.abateDraft, productionLevel: MP.productionDraft });
+      var data = await mpApi("submitAbatement", { code: MP.code, seat: MP.mySeat, activatedCount: MP.abateDraft, productionLevel: MP.productionDraft, cbamEuShare: MP.cbamDraft.euShare, cbamVerify: MP.cbamDraft.verify });
       MP.state = data.state;
     } catch (e) { MP.entryError = e.message; }
     MP.busy = false; render();
@@ -651,6 +676,7 @@
     var yd = ensureYearData();
     var mySector = sectorById(player().sectorId);
     G.productionDraft = Math.round(yd.scenario.demand[mySector.id] * 20) / 20;
+    G.cbamDraft = { euShare: G.cbamConfig.enabled && cbamEligible(mySector.id) ? 0.15 : 0, verify: true };
     G.screen = "abatement";
     render();
   }
@@ -686,7 +712,9 @@
         return { side: sd >= 0 ? "sell" : "buy", qty: qty, limitPrice: clamp(G.tradeDraft.limitPrice, PRICE_FLOOR, PRICE_CEIL) };
       }
       return botChooseOrder(c, sd, pg);
-    }, G.year);
+    }, G.year, G.cbamConfig, function (c, s, year, ab) {
+      return c.isPlayer ? G.cbamDraft : botChooseCbam(c, s, year);
+    });
     yd.orders = result.orders;
     yd.auction = result.auction;
     yd.settled = result.settled;
@@ -726,7 +754,9 @@
         archetypeWeights: G.simConfig.archetypeWeights,
         strategyWeights: G.simConfig.strategyWeights,
         variance: VARIANCE_LEVELS[G.simConfig.varianceLabel],
-        trials: G.simConfig.trials
+        trials: G.simConfig.trials,
+        cbamEnabled: G.simConfig.cbamEnabled,
+        cbamArticle9Recognized: G.simConfig.cbamArticle9Recognized
       };
       G.simResult = runSimulation(cfg);
       G.screen = "simresults";
@@ -1008,11 +1038,38 @@
       html += '</div>';
     }
 
+    html += cbamSetupCard(G.cbamConfig);
+
     html += '<div class="row" style="justify-content:space-between;margin-top:0.5rem;">';
     html += '<button class="btn btn-ghost" data-action="back-landing">← Back</button>';
     html += '<button class="btn" data-action="start-game"' + (sec && G.draft.archetypeId ? "" : " disabled") + '>Take Over Operations →</button>';
     html += '</div></div>';
     return html;
+  }
+
+  // Shared by Solo setup and the Simulator config screen — same module,
+  // same explanation, same two toggles, just bound to a different config
+  // object and a different pair of data-action names.
+  function cbamSetupCard(cfg, toggleAction, article9Action) {
+    toggleAction = toggleAction || "cbam-toggle";
+    article9Action = article9Action || "cbam-article9-toggle";
+    return '<h2 style="margin-top:1rem;">CBAM module (optional)</h2>' +
+      '<div class="card stack">' +
+        '<p style="margin:0;">Layer the EU\'s Carbon Border Adjustment Mechanism on top of CCTS. If your sector is CBAM-eligible (Aluminium, Iron &amp; Steel, Cement, Fertilizer) and you export to the EU, you may face a second, independent carbon cost on the same tonnes — on top of whatever CCTS already charged you.</p>' +
+        '<div class="row" style="gap:0.6rem;">' +
+          '<button class="btn' + (cfg.enabled ? "" : " btn-ghost") + '" data-action="' + toggleAction + '" data-id="on">On</button>' +
+          '<button class="btn' + (!cfg.enabled ? "" : " btn-ghost") + '" data-action="' + toggleAction + '" data-id="off">Off</button>' +
+        '</div>' +
+        (cfg.enabled ?
+          '<div class="stack" style="gap:0.4rem;">' +
+            '<p class="muted" style="margin:0;">Does your CCTS compliance cost count as a “carbon price effectively paid” under CBAM Article 9? This is a live, unresolved policy question — the EU\'s own draft rules do not currently recognize CCTS. Explore either assumption:</p>' +
+            '<div class="row" style="gap:0.6rem;">' +
+              '<button class="btn btn-sm' + (cfg.article9Recognized ? "" : " btn-ghost") + '" data-action="' + article9Action + '" data-id="on">Recognized — CCTS price is deductible</button>' +
+              '<button class="btn btn-sm' + (!cfg.article9Recognized ? "" : " btn-ghost") + '" data-action="' + article9Action + '" data-id="off">Not recognized — pay in full</button>' +
+            '</div>' +
+          '</div>'
+        : "") +
+      '</div>';
   }
 
   function outlookDelta(mult) {
@@ -1085,6 +1142,27 @@
     return { actualOutput: actualOutput, ceiling: ceiling, revenue: revenue, oversupplied: excess > 0 };
   }
 
+  // Shared by Solo and Multiplayer's live abatement-screen preview, and by
+  // the actual settlement math in engine.js's resolveTrading — kept as a
+  // single implementation so the number a player previews before locking in
+  // their plan always matches what settlement actually charges them.
+  function previewCbamStats(company, sector, actualIntensity, actualOutput, euShare, verify, year, priceGuess, article9Recognized) {
+    if (!cbamEligible(sector.id)) return null;
+    var euOutput = actualOutput * euShare;
+    var intensity = verify ? actualIntensity : company.baselineIntensity * CBAM_DEFAULT_VALUE_MARKUP;
+    var embeddedEmissions = intensity * euOutput;
+    var fraction = cbamObligationFraction(year);
+    var certificates = embeddedEmissions * fraction;
+    var price = euEtsPrice(year);
+    var deductible = article9Recognized ? Math.min(price, priceGuess) : 0;
+    var cost = Math.max(0, certificates * (price - deductible));
+    return {
+      euOutput: euOutput, embeddedEmissions: embeddedEmissions, certificates: certificates,
+      euEtsPrice: price, deductible: deductible, cbamCost: cost,
+      verificationCost: verify ? CBAM_VERIFICATION_COST : 0
+    };
+  }
+
   function renderAbatement() {
     var p = player();
     var sec = sectorById(p.sectorId);
@@ -1097,6 +1175,7 @@
     var yd = ensureYearData();
     var prodLevel = G.productionDraft;
     var prodStats = previewProductionStats(p, sec, prodLevel, yd.scenario);
+    var priceGuess = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
     var html = '<div class="wrap grid-2">' +
       '<div class="stack">' + sidebarCard() + '</div>' +
       '<div class="stack">' +
@@ -1123,10 +1202,79 @@
           '<div class="kpi"><span class="kv" id="abate-capex">' + cr(capex) + '</span><span class="kl">Capex This Period</span></div>' +
           '<div class="kpi"><span class="kv" id="abate-intensity" style="color:' + (actual <= target ? "var(--good)" : "var(--critical)") + '">' + num2.format(actual) + '</span><span class="kl">Resulting Intensity</span></div>' +
         '</div>' +
+        cbamAbatementCard(p, sec, actual, prodStats.actualOutput, G.cbamDraft, G.year, G.cbamConfig, "cbam", priceGuess) +
         '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="confirm-abatement">Lock In Plan →</button></div>' +
       '</div>' +
     '</div>';
     return html;
+  }
+
+  // Shared by Solo and Multiplayer's abatement screens — `prefix` namespaces
+  // the DOM ids ("cbam-" for Solo, "mp-cbam-" for Multiplayer) so both
+  // live-preview handlers in bindEvents() can target their own copy.
+  function cbamAbatementCard(company, sector, actualIntensity, actualOutput, draft, year, cbamConfig, prefix, priceGuess) {
+    if (!cbamConfig.enabled || !cbamEligible(sector.id)) return "";
+    var stats = previewCbamStats(company, sector, actualIntensity, actualOutput, draft.euShare, draft.verify, year, priceGuess, cbamConfig.article9Recognized);
+    return '<h3 style="margin-bottom:0;">CBAM: EU border adjustment</h3>' +
+      '<p style="margin-top:0.2rem;">This module is on. Decide how much of this year\'s output goes to EU customers — the EU will separately charge a CBAM certificate cost on the carbon embedded in it, using ' + (cbamConfig.article9Recognized ? "a deduction for" : "no credit for") + ' whatever CCTS already charged you.</p>' +
+      '<div class="card stack">' +
+        '<input type="range" min="0" max="100" step="5" value="' + Math.round(draft.euShare * 100) + '" id="' + prefix + '-share-slider" />' +
+        '<div class="row" style="justify-content:space-between;">' +
+          '<div class="kpi"><span class="kv" id="' + prefix + '-share-level">' + Math.round(draft.euShare * 100) + '%</span><span class="kl">Share of Output to the EU</span></div>' +
+          '<div class="kpi"><span class="kv" id="' + prefix + '-eu-output">' + moneyInt.format(Math.round(stats.euOutput)) + '</span><span class="kl">EU-Bound Output</span></div>' +
+          '<div class="kpi"><span class="kv" id="' + prefix + '-est-cost" style="color:var(--critical);">' + cr(stats.cbamCost + stats.verificationCost) + '</span><span class="kl">Est. CBAM Cost</span></div>' +
+        '</div>' +
+        '<label style="display:flex;align-items:flex-start;gap:0.5rem;font-size:12.5px;color:var(--ink-2);">' +
+          '<input type="checkbox" id="' + prefix + '-verify-check"' + (draft.verify ? " checked" : "") + ' style="margin-top:0.15rem;" />' +
+          '<span>Submit verified emissions data to the EU — avoids the punitive default value (' + num2.format(CBAM_DEFAULT_VALUE_MARKUP) + '× baseline intensity), at a flat ' + cr(CBAM_VERIFICATION_COST) + ' MRV/verification cost.</span>' +
+        '</label>' +
+        '<p class="muted" id="' + prefix + '-note" style="margin:0;">' + cbamNoteText(stats, cbamConfig) + '</p>' +
+      '</div>';
+  }
+
+  function cbamNoteText(stats, cbamConfig) {
+    return num2.format(stats.certificates) + ' tCO2e of certificates at ' + rupee(stats.euEtsPrice) + '/tCO2e' +
+      (stats.deductible > 0 ? ', minus a ' + rupee(stats.deductible) + '/tCO2e Article 9 deduction' : cbamConfig.article9Recognized ? '' : ' — Article 9 not recognized, so nothing is deducted') + '.';
+  }
+
+  // Re-derives and re-renders the CBAM card's live numbers whenever any
+  // input that feeds them changes (abatement, production, EU share, or the
+  // verify checkbox) — a no-op if the card isn't in the DOM (module off, or
+  // sector not CBAM-eligible).
+  function refreshCbamPreview() {
+    var shareEl = document.getElementById("cbam-share-level");
+    if (!shareEl) return;
+    var p = player();
+    var sec = sectorById(p.sectorId);
+    var effCount = previewEffectiveCount(p, G.abateDraft, G.year);
+    var actual = p.baselineIntensity - cumulativeReduction(p, effCount);
+    var actualOutput = p.output * G.productionDraft;
+    var priceGuess = G.priceHistory.length ? G.priceHistory[G.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+    var stats = previewCbamStats(p, sec, actual, actualOutput, G.cbamDraft.euShare, G.cbamDraft.verify, G.year, priceGuess, G.cbamConfig.article9Recognized);
+    shareEl.textContent = Math.round(G.cbamDraft.euShare * 100) + "%";
+    document.getElementById("cbam-eu-output").textContent = moneyInt.format(Math.round(stats.euOutput));
+    document.getElementById("cbam-est-cost").textContent = cr(stats.cbamCost + stats.verificationCost);
+    document.getElementById("cbam-note").textContent = cbamNoteText(stats, G.cbamConfig);
+  }
+
+  // Multiplayer counterpart to refreshCbamPreview() — same idea, but reads
+  // MP.state/MP.abateDraft/MP.productionDraft and targets the "mp-cbam-"
+  // prefixed DOM ids instead of Solo's un-prefixed ones.
+  function refreshMpCbamPreview() {
+    var shareEl = document.getElementById("mp-cbam-share-level");
+    if (!shareEl) return;
+    var mine = mpMyCompany();
+    var sector = sectorById(mine.sectorId);
+    var effCount = previewEffectiveCount(mine, MP.abateDraft, MP.state.year);
+    var actual = mine.baselineIntensity - cumulativeReduction(mine, effCount);
+    var actualOutput = mine.output * MP.productionDraft;
+    var priceGuess = MP.state.priceHistory.length ? MP.state.priceHistory[MP.state.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+    var cbamCfg = MP.state.cbamConfig || { enabled: false, article9Recognized: false };
+    var stats = previewCbamStats(mine, sector, actual, actualOutput, MP.cbamDraft.euShare, MP.cbamDraft.verify, MP.state.year, priceGuess, cbamCfg.article9Recognized);
+    shareEl.textContent = Math.round(MP.cbamDraft.euShare * 100) + "%";
+    document.getElementById("mp-cbam-eu-output").textContent = moneyInt.format(Math.round(stats.euOutput));
+    document.getElementById("mp-cbam-est-cost").textContent = cr(stats.cbamCost + stats.verificationCost);
+    document.getElementById("mp-cbam-note").textContent = cbamNoteText(stats, cbamCfg);
   }
 
   // `previewCount` is what the slider would commit if locked in right now (>= p.activatedCount).
@@ -1232,6 +1380,7 @@
             settleRow("Newly banked", moneyInt.format(Math.round(rec.bankedNow)) + " tCO2e") +
             settleRow("Penalty (2× price)", rec.penalty > 0.01 ? cr(rec.penalty) : "—") +
             settleRow("Abatement capex", cr(rec.capex)) +
+            cbamSettleRows(rec.cbam) +
             settleRow("Net profit this period", cr(rec.yearProfit)) +
           '</tbody></table></div>' +
         '</div>' +
@@ -1243,6 +1392,17 @@
   }
 
   function settleRow(label, val) { return '<tr><td>' + label + '</td><td class="num">' + val + '</td></tr>'; }
+
+  // No-op (empty string) when the CBAM module is off or this company's
+  // sector isn't CBAM-eligible — `rec.cbam` is only ever non-null in that
+  // case, per engine.js's resolveTrading.
+  function cbamSettleRows(cbam) {
+    if (!cbam) return "";
+    return settleRow("CBAM: EU-bound output", moneyInt.format(Math.round(cbam.euOutput)) + " units (" + Math.round(cbam.euShare * 100) + "% of production)") +
+      settleRow("CBAM: embedded emissions" + (cbam.verified ? " (verified)" : " (EU default value)"), moneyInt.format(Math.round(cbam.embeddedEmissions)) + " tCO2e") +
+      settleRow("CBAM certificates surrendered", num2.format(cbam.certificates) + " tCO2e" + (cbam.deductible > 0 ? " (" + rupee(cbam.euEtsPrice) + " − " + rupee(cbam.deductible) + " Art. 9 deduction)" : " at " + rupee(cbam.euEtsPrice))) +
+      settleRow("CBAM cost" + (cbam.verificationCost > 0 ? " (incl. verification)" : ""), cr(cbam.cbamCost + cbam.verificationCost));
+  }
 
   function renderSummary() {
     var p = player();
@@ -1346,6 +1506,8 @@
         '</div>' +
         '<p class="muted" style="margin:0;">More trials narrow the forecast band at the cost of a slightly longer run.</p>' +
       '</div>' +
+
+      cbamSetupCard({ enabled: cfg.cbamEnabled, article9Recognized: cfg.cbamArticle9Recognized }, "sim-cbam-toggle", "sim-cbam-article9-toggle") +
 
       '<div class="row" style="justify-content:space-between;">' +
         '<button class="btn btn-ghost" data-action="back-landing">← Back</button>' +
@@ -1452,6 +1614,20 @@
         '<div class="row" style="gap:2rem;flex-wrap:wrap;">' + res.years.map(function (y) { return '<div style="flex:1;min-width:240px;">' + coverageBar(y) + '</div>'; }).join("") + '</div>' +
       '</div>' +
 
+      (cfg.cbamEnabled ? '<div class="card stack"><h3 style="margin:0;">CBAM: EU border adjustment (optional module)</h3>' +
+        '<p style="margin:0;">Aggregate CBAM exposure across every eligible (Aluminium, Iron &amp; Steel, Cement, Fertilizer) simulated operator that chose a non-zero EU export share this year, under Article 9 ' + (cfg.cbamArticle9Recognized ? "recognized" : "not recognized") + '.</p>' +
+        '<div class="row">' + res.years.map(function (y) {
+          return '<div class="card" style="flex:1;min-width:220px;"><div class="kpi">' +
+            '<span class="kv" style="color:var(--critical);">' + cr(y.cbamCost) + '</span>' +
+            '<span class="kl">FY 20' + (24 + y.year) + '-' + (25 + y.year) + ' Avg. CBAM Cost</span></div></div>';
+        }).join("") + '</div>' +
+        '<div class="row">' + res.years.map(function (y) {
+          return '<div class="card" style="flex:1;min-width:220px;"><div class="kpi">' +
+            '<span class="kv">' + moneyInt.format(Math.round(y.cbamExposedCount)) + '</span>' +
+            '<span class="kl">FY 20' + (24 + y.year) + '-' + (25 + y.year) + ' EU-Exposed Operators (avg./trial)</span></div></div>';
+        }).join("") + '</div>' +
+      '</div>' : "") +
+
       '<div class="card"><h3 style="margin-top:0;">Sector breakdown</h3>' +
       '<div class="table-wrap"><table><thead><tr><th>Sector</th>' +
         res.years.map(function (y) { return '<th class="num">FY' + (25 + y.year) + ' Compliant</th>'; }).join("") +
@@ -1544,6 +1720,32 @@
     '</div></div>';
   }
 
+  function mpCbamLobbyCard(isHost) {
+    var cfg = MP.state.cbamConfig || { enabled: false, article9Recognized: false };
+    return '<div class="card stack">' +
+      '<div class="row" style="justify-content:space-between;align-items:center;">' +
+        '<h3 style="margin:0;">CBAM module (optional)</h3>' +
+        '<span class="pill ' + (cfg.enabled ? "pill-good" : "pill-idle") + '">' + (cfg.enabled ? "On" : "Off") + '</span>' +
+      '</div>' +
+      '<p style="margin:0;">Layers the EU\'s Carbon Border Adjustment Mechanism on top of CCTS for Aluminium, Iron &amp; Steel, Cement and Fertilizer seats — a second, independent carbon cost on whatever share of production goes to the EU.</p>' +
+      (isHost
+        ? '<div class="row" style="gap:0.6rem;">' +
+            '<button class="btn btn-sm' + (cfg.enabled ? "" : " btn-ghost") + '" data-action="mp-cbam-toggle" data-id="on"' + (MP.busy ? " disabled" : "") + '>On</button>' +
+            '<button class="btn btn-sm' + (!cfg.enabled ? "" : " btn-ghost") + '" data-action="mp-cbam-toggle" data-id="off"' + (MP.busy ? " disabled" : "") + '>Off</button>' +
+          '</div>' +
+          (cfg.enabled
+            ? '<div class="stack" style="gap:0.4rem;">' +
+                '<p class="muted" style="margin:0;">Does CCTS compliance count as a “carbon price effectively paid” under CBAM Article 9? Unresolved in reality — the EU\'s own draft rules don\'t currently recognize CCTS.</p>' +
+                '<div class="row" style="gap:0.6rem;">' +
+                  '<button class="btn btn-sm' + (cfg.article9Recognized ? "" : " btn-ghost") + '" data-action="mp-cbam-article9-toggle" data-id="on"' + (MP.busy ? " disabled" : "") + '>Recognized</button>' +
+                  '<button class="btn btn-sm' + (!cfg.article9Recognized ? "" : " btn-ghost") + '" data-action="mp-cbam-article9-toggle" data-id="off"' + (MP.busy ? " disabled" : "") + '>Not recognized</button>' +
+                '</div>' +
+              '</div>'
+            : "")
+        : '<p class="muted" style="margin:0;">' + (cfg.enabled ? "Article 9 " + (cfg.article9Recognized ? "recognized" : "not recognized") + " this game — set by the host." : "Set by the host before the game starts.") + '</p>') +
+    '</div>';
+  }
+
   function renderMpLobby() {
     var isHost = !!MP.hostToken;
     var claimedCount = SECTORS.filter(function (s) { return MP.state.seats[s.id].claimedBy; }).length;
@@ -1556,6 +1758,7 @@
       '<div class="stack">' +
         '<h2>Lobby</h2>' +
         mpErrorBanner() +
+        mpCbamLobbyCard(isHost) +
         (MP.mySeat ? "" :
           '<div class="card stack">' +
             '<h3 style="margin:0;">Claim a seat</h3>' +
@@ -1641,16 +1844,25 @@
       MP.productionDraft = yd.scenario ? Math.round(yd.scenario.demand[sector.id] * 20) / 20 : 1;
       MP.productionDraftYear = MP.state.year;
     }
+    if (MP.cbamDraftYear !== MP.state.year) {
+      var cbamCfgForDefault = MP.state.cbamConfig || { enabled: false };
+      MP.cbamDraft = { euShare: cbamCfgForDefault.enabled && cbamEligible(sector.id) ? 0.15 : 0, verify: true };
+      MP.cbamDraftYear = MP.state.year;
+    }
     var target = targetIntensity(mine, sector, MP.state.year);
     var alreadySubmitted = MP.state.submissions.abatement[MP.mySeat] != null;
     var count = alreadySubmitted ? MP.state.submissions.abatement[MP.mySeat] : MP.abateDraft;
     var prodSubmitted = MP.state.submissions.production[MP.mySeat];
     var prodLevel = prodSubmitted != null ? prodSubmitted : MP.productionDraft;
+    var cbamSubmitted = MP.state.submissions.cbam[MP.mySeat];
+    var cbamDraft = cbamSubmitted != null ? { euShare: cbamSubmitted.euShare, verify: cbamSubmitted.verify } : MP.cbamDraft;
     var effCount = previewEffectiveCount(mine, count, MP.state.year);
     var reduced = cumulativeReduction(mine, effCount);
     var actual = mine.baselineIntensity - reduced;
     var capex = newMeasuresCost(mine, mine.activatedCount, count);
     var prodStats = yd.scenario ? previewProductionStats(mine, sector, prodLevel, yd.scenario) : null;
+    var mpPriceGuess = MP.state.priceHistory.length ? MP.state.priceHistory[MP.state.priceHistory.length - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+    var cbamCfg = MP.state.cbamConfig || { enabled: false, article9Recognized: false };
     var html = '<div class="wrap grid-2">' +
       '<div class="stack">' + mpRoster("abatement") + '</div>' +
       '<div class="stack">' +
@@ -1683,6 +1895,7 @@
           '<div class="kpi"><span class="kv" id="mp-abate-capex">' + cr(capex) + '</span><span class="kl">Capex This Period</span></div>' +
           '<div class="kpi"><span class="kv" id="mp-abate-intensity" style="color:' + (actual <= target ? "var(--good)" : "var(--critical)") + '">' + num2.format(actual) + '</span><span class="kl">Resulting Intensity</span></div>' +
         '</div>' +
+        cbamAbatementCard(mine, sector, actual, prodStats ? prodStats.actualOutput : mine.output, cbamDraft, MP.state.year, cbamCfg, "mp-cbam", mpPriceGuess) +
         '<div class="row" style="justify-content:space-between;">' +
           '<button class="btn btn-ghost" data-action="mp-submit-abatement"' + (MP.busy ? " disabled" : "") + '>' + (alreadySubmitted ? "Update Submission" : "Submit Plan") + '</button>' +
           mpAdvanceControl("Open Exchange →") +
@@ -1758,6 +1971,7 @@
             settleRow("Target vs. actual intensity", num2.format(rec.target) + " vs " + num2.format(rec.actual)) +
             settleRow("Surplus / (deficit)", num2.format(rec.surplusDeficit) + " tCO2e") +
             settleRow("Penalty (2× price)", rec.penalty > 0.01 ? cr(rec.penalty) : "—") +
+            cbamSettleRows(rec.cbam) +
             settleRow("Net profit this period", cr(rec.yearProfit)) +
           '</tbody></table></div>' +
         '</div>' : "") +
@@ -1809,6 +2023,10 @@
       else if (action === "goto-simsetup") { goToSimSetup(); }
       else if (action === "run-simulation") { launchSimulation(); }
       else if (action === "pick-variance") { G.simConfig.varianceLabel = el.getAttribute("data-id"); render(); }
+      else if (action === "cbam-toggle") { G.cbamConfig.enabled = el.getAttribute("data-id") === "on"; render(); }
+      else if (action === "cbam-article9-toggle") { G.cbamConfig.article9Recognized = el.getAttribute("data-id") === "on"; render(); }
+      else if (action === "sim-cbam-toggle") { G.simConfig.cbamEnabled = el.getAttribute("data-id") === "on"; render(); }
+      else if (action === "sim-cbam-article9-toggle") { G.simConfig.cbamArticle9Recognized = el.getAttribute("data-id") === "on"; render(); }
       else if (action === "goto-mp") { mpReset(); G.screen = "mp"; render(); }
       else if (action === "mp-create") { mpCreateRoom(); }
       else if (action === "mp-join-lookup") {
@@ -1828,6 +2046,14 @@
         mpClaimSeat(el.getAttribute("data-id"));
       }
       else if (action === "mp-start-game") { mpStartGame(); }
+      else if (action === "mp-cbam-toggle") {
+        var curCfg = MP.state.cbamConfig || { enabled: false, article9Recognized: false };
+        mpSetCbamConfig(el.getAttribute("data-id") === "on", curCfg.article9Recognized);
+      }
+      else if (action === "mp-cbam-article9-toggle") {
+        var curCfg2 = MP.state.cbamConfig || { enabled: false, article9Recognized: false };
+        mpSetCbamConfig(curCfg2.enabled, el.getAttribute("data-id") === "on");
+      }
       else if (action === "mp-advance") { mpAdvancePhase(); }
       else if (action === "mp-submit-abatement") { mpSubmitAbatement(); }
       else if (action === "mp-submit-order") { mpSubmitOrder(); }
@@ -1849,6 +2075,7 @@
         intensityEl.textContent = num2.format(actual);
         intensityEl.style.color = actual <= target ? "var(--good)" : "var(--critical)";
         document.getElementById("measure-list").innerHTML = measureRows(p, G.abateDraft, G.year);
+        refreshCbamPreview();
       };
     }
     var prodSlider = document.getElementById("production-slider");
@@ -1867,6 +2094,21 @@
         document.getElementById("production-note").textContent = stats.oversupplied
           ? "Producing above the demand ceiling (" + moneyInt.format(Math.round(stats.ceiling)) + ") — the excess sells at a discount."
           : "Within this year's demand ceiling (" + moneyInt.format(Math.round(stats.ceiling)) + ") — full-price revenue on all of it.";
+        refreshCbamPreview();
+      };
+    }
+    var cbamShareSlider = document.getElementById("cbam-share-slider");
+    if (cbamShareSlider) {
+      cbamShareSlider.oninput = function () {
+        G.cbamDraft.euShare = parseInt(cbamShareSlider.value, 10) / 100;
+        refreshCbamPreview();
+      };
+    }
+    var cbamVerifyCheck = document.getElementById("cbam-verify-check");
+    if (cbamVerifyCheck) {
+      cbamVerifyCheck.onchange = function () {
+        G.cbamDraft.verify = cbamVerifyCheck.checked;
+        refreshCbamPreview();
       };
     }
     var qtyEl = document.getElementById("trade-qty");
@@ -1924,6 +2166,7 @@
         intensityEl.textContent = num2.format(actual);
         intensityEl.style.color = actual <= target ? "var(--good)" : "var(--critical)";
         document.getElementById("mp-measure-list").innerHTML = measureRows(mine, MP.abateDraft, MP.state.year);
+        refreshMpCbamPreview();
       };
     }
     var mpProdSlider = document.getElementById("mp-production-slider");
@@ -1943,6 +2186,21 @@
         document.getElementById("mp-production-note").textContent = stats.oversupplied
           ? "Producing above the demand ceiling (" + moneyInt.format(Math.round(stats.ceiling)) + ") — the excess sells at a discount."
           : "Within this year's demand ceiling (" + moneyInt.format(Math.round(stats.ceiling)) + ") — full-price revenue on all of it.";
+        refreshMpCbamPreview();
+      };
+    }
+    var mpCbamShareSlider = document.getElementById("mp-cbam-share-slider");
+    if (mpCbamShareSlider) {
+      mpCbamShareSlider.oninput = function () {
+        MP.cbamDraft.euShare = parseInt(mpCbamShareSlider.value, 10) / 100;
+        refreshMpCbamPreview();
+      };
+    }
+    var mpCbamVerifyCheck = document.getElementById("mp-cbam-verify-check");
+    if (mpCbamVerifyCheck) {
+      mpCbamVerifyCheck.onchange = function () {
+        MP.cbamDraft.verify = mpCbamVerifyCheck.checked;
+        refreshMpCbamPreview();
       };
     }
     var mpQtyEl = document.getElementById("mp-trade-qty");

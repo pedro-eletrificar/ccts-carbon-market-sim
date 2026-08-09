@@ -105,6 +105,24 @@ function makeDecideProduction(state) {
   };
 }
 
+function makeDecideCbam(state) {
+  return function (company, sector, year) {
+    if (!state.cbamConfig || !state.cbamConfig.enabled) return { euShare: 0, verify: false };
+    var seat = state.seats[company.sectorId];
+    if (seat.isHuman) {
+      var submitted = state.submissions.cbam[company.sectorId];
+      if (submitted != null) {
+        return {
+          euShare: engine.clamp(Number(submitted.euShare) || 0, 0, 1),
+          verify: !!submitted.verify
+        };
+      }
+      return { euShare: 0, verify: false };
+    }
+    return engine.botChooseCbam(company, sector, year);
+  };
+}
+
 function makeDecideOrder(state) {
   return function (company, surplusDeficit, priceGuess) {
     var seat = state.seats[company.sectorId];
@@ -140,7 +158,8 @@ async function actionCreate(req, res) {
     year: 1,
     seats: emptySeats(),
     companies: {},
-    submissions: { abatement: {}, production: {}, trading: {} },
+    submissions: { abatement: {}, production: {}, trading: {}, cbam: {} },
+    cbamConfig: { enabled: false, article9Recognized: false },
     priceHistory: [],
     yearData: {}
   };
@@ -158,6 +177,19 @@ async function actionJoin(req, res, body) {
   if (state.seats[seat].claimedBy) return conflict(res, "Seat already claimed");
   var archetypeId = engine.archetypeById(body.archetypeId) ? body.archetypeId : "midpack";
   state.seats[seat] = { claimedBy: name, isHuman: true, archetypeId: archetypeId };
+  await writeRoom(state);
+  res.status(200).json({ state: publicState(state) });
+}
+
+async function actionSetCbamConfig(req, res, body) {
+  var state = await readRoom(body.code);
+  if (!state) return notFound(res);
+  if (body.hostToken !== state.hostToken) return forbidden(res);
+  if (state.phase !== "lobby") return conflict(res, "Can only change this before the game starts");
+  state.cbamConfig = {
+    enabled: !!body.enabled,
+    article9Recognized: !!body.article9Recognized
+  };
   await writeRoom(state);
   res.status(200).json({ state: publicState(state) });
 }
@@ -197,6 +229,11 @@ async function actionSubmitAbatement(req, res, body) {
     if (!(level >= 0.5 && level <= 1.5)) return badRequest(res, "productionLevel must be 0.5-1.5");
     state.submissions.production[body.seat] = level;
   }
+  if (body.cbamEuShare != null) {
+    var euShare = Number(body.cbamEuShare);
+    if (!(euShare >= 0 && euShare <= 1)) return badRequest(res, "cbamEuShare must be 0-1");
+    state.submissions.cbam[body.seat] = { euShare: euShare, verify: !!body.cbamVerify };
+  }
   await writeRoom(state);
   res.status(200).json({ state: publicState(state) });
 }
@@ -226,6 +263,7 @@ async function actionAdvancePhase(req, res, body) {
     state.phase = "abatement";
     state.submissions.abatement = {};
     state.submissions.production = {};
+    state.submissions.cbam = {};
   } else if (state.phase === "abatement") {
     var abate = engine.resolveAbatement(companies, state.year, priorPrice(state), makeDecideAbatement(state), makeDecideProduction(state), yd.scenario);
     yd.abate = abate;
@@ -233,7 +271,7 @@ async function actionAdvancePhase(req, res, body) {
     state.submissions.trading = {};
   } else if (state.phase === "trading") {
     if (!yd.abate) return conflict(res, "Abatement has not been resolved yet");
-    var trading = engine.resolveTrading(companies, yd.abate, priorPrice(state), makeDecideOrder(state), state.year);
+    var trading = engine.resolveTrading(companies, yd.abate, priorPrice(state), makeDecideOrder(state), state.year, state.cbamConfig, makeDecideCbam(state));
     yd.orders = trading.orders;
     yd.auction = trading.auction;
     yd.settled = trading.settled;
@@ -275,6 +313,7 @@ module.exports = async function handler(req, res) {
         case "create": return await actionCreate(req, res);
         case "join": return await actionJoin(req, res, body);
         case "startGame": return await actionStartGame(req, res, body);
+        case "setCbamConfig": return await actionSetCbamConfig(req, res, body);
         case "submitAbatement": return await actionSubmitAbatement(req, res, body);
         case "submitOrder": return await actionSubmitOrder(req, res, body);
         case "advancePhase": return await actionAdvancePhase(req, res, body);

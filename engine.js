@@ -94,6 +94,52 @@ var MEASURE_FRACTION_TIERS = [0.02, 0.035, 0.05, 0.07];
 var PRICE_FLOOR = 500;
 var PRICE_CEIL = 6000;
 
+// ---------- optional CBAM module ----------
+// Off by default everywhere — every function below is a no-op unless a
+// caller explicitly passes an enabled cbamConfig into resolveTrading, so
+// existing 5-arg callers (pre-CBAM) see byte-identical behavior.
+//
+// Real CBAM (Regulation (EU) 2023/956) covers Iron & Steel, Aluminium,
+// Cement, Fertilizers, Hydrogen and Electricity — of this simulator's nine
+// CCTS sectors, that overlaps with exactly these four.
+var CBAM_ELIGIBLE_SECTORS = { aluminium: 1, steel: 1, cement: 1, fertilizer: 1 };
+function cbamEligible(sectorId) { return !!CBAM_ELIGIBLE_SECTORS[sectorId]; }
+
+// The definitive-regime certificate obligation only bites on the share of
+// embedded emissions NOT still covered by phasing-out EU ETS free
+// allocation: 2.5% in 2026, 5% in 2027, 10% in 2028, rising to 100% by 2034.
+// This simulator's three years line up with the first three of those.
+var CBAM_OBLIGATION_FRACTION = [0.025, 0.05, 0.10];
+function cbamObligationFraction(year) { return CBAM_OBLIGATION_FRACTION[year - 1] || 0; }
+
+// Illustrative EU ETS reference price in Rupees (~€80/tCO2e at ~91 INR/EUR),
+// deliberately held well above the CCTS collar ceiling — that persistent
+// gap between a domestic and an EU carbon price is the entire reason a
+// border adjustment exists. Drifts mildly upward year to year, independent
+// of whatever the CCTS auction clears at.
+var CBAM_EU_ETS_PRICE_BASE = 7280;
+var CBAM_EU_ETS_DRIFT = [0, 0.04, 0.09];
+function euEtsPrice(year) { return CBAM_EU_ETS_PRICE_BASE * (1 + (CBAM_EU_ETS_DRIFT[year - 1] || 0)); }
+
+// If an operator doesn't submit verified emissions data, the EU applies a
+// deliberately punitive default value instead of the true figure — modeled
+// here as a flat markup over the company's own unabated baseline, which is
+// always worse than any verified actualIntensity a company could report.
+var CBAM_DEFAULT_VALUE_MARKUP = 1.5;
+// Flat illustrative annual MRV/verification cost — small next to the
+// capex figures elsewhere, but real enough that "always verify" isn't a
+// free action at very low EU export shares.
+var CBAM_VERIFICATION_COST = 1500000;
+
+// Bots take a modest, illustrative EU export share when the module is on
+// and their sector is eligible, and default to verifying — the interesting
+// variation is a human's own export-share and Article 9 choices, not bot
+// guessing.
+function botChooseCbam(company, sector, year) {
+  if (!cbamEligible(sector.id)) return { euShare: 0, verify: false };
+  return { euShare: rnd(0.1, 0.35), verify: true };
+}
+
 function rnd(min, max) { return min + Math.random() * (max - min); }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -350,7 +396,7 @@ function resolveAbatement(companies, year, priceGuess, decideAbatement, decidePr
   return abate;
 }
 
-function resolveTrading(companies, abate, priceGuess, decideOrder, year) {
+function resolveTrading(companies, abate, priceGuess, decideOrder, year, cbamConfig, decideCbam) {
   var orders = [];
   companies.forEach(function (c) {
     var sd = abate[c.id].surplusDeficit;
@@ -379,9 +425,46 @@ function resolveTrading(companies, abate, priceGuess, decideOrder, year) {
       if (stillShort > 0.01) { penalty = stillShort * 2 * auction.clearingPrice; penaltyTonnes = stillShort; }
     }
     var netTrade = sold * auction.clearingPrice - bought * auction.clearingPrice;
-    var yearProfit = ab.revenue - ab.capex - penalty + netTrade;
+
+    // Optional CBAM module: a second, independent carbon cost on whatever
+    // share of this year's output is sold into the EU. Entirely separate
+    // from the CCTS auction above — it exists alongside it, not instead of
+    // it, which is exactly the "do you pay twice" tension the module is
+    // built to surface.
+    var cbam = null;
+    if (cbamConfig && cbamConfig.enabled && cbamEligible(c.sectorId)) {
+      var sector = sectorById(c.sectorId);
+      var decision = (decideCbam ? decideCbam(c, sector, year, ab, auction.clearingPrice) : null) || { euShare: 0, verify: false };
+      var euShare = clamp(decision.euShare || 0, 0, 1);
+      var verify = !!decision.verify;
+      var euOutput = ab.actualOutput * euShare;
+      // Verified data uses the company's real, already-computed intensity;
+      // skipping verification means the EU falls back to a deliberately
+      // punitive default value instead — always worse than reporting.
+      var intensity = verify ? ab.actualIntensity : c.baselineIntensity * CBAM_DEFAULT_VALUE_MARKUP;
+      var embeddedEmissions = intensity * euOutput;
+      var fraction = cbamObligationFraction(year);
+      var certificates = embeddedEmissions * fraction;
+      var price = euEtsPrice(year);
+      // Article 9: whether this year's CCTS clearing price counts as a
+      // "carbon price effectively paid" at all is the live, unresolved
+      // policy question — modeled here as a scenario toggle rather than a
+      // fixed assumption. When not recognized, deductible is always zero,
+      // regardless of what the company actually paid domestically.
+      var deductible = cbamConfig.article9Recognized ? Math.min(price, auction.clearingPrice) : 0;
+      var cbamCost = Math.max(0, certificates * (price - deductible));
+      var verificationCost = verify ? CBAM_VERIFICATION_COST : 0;
+      cbam = {
+        euShare: euShare, euOutput: euOutput, verified: verify,
+        embeddedEmissions: embeddedEmissions, certificates: certificates,
+        euEtsPrice: price, deductible: deductible,
+        cbamCost: cbamCost, verificationCost: verificationCost
+      };
+    }
+
+    var yearProfit = ab.revenue - ab.capex - penalty + netTrade - (cbam ? (cbam.cbamCost + cbam.verificationCost) : 0);
     c.totalProfit += yearProfit;
-    var rec = { year: year, target: ab.target, actual: ab.actualIntensity, surplusDeficit: sd, bankUsed: bankUsed, bought: bought, sold: sold, bankedNow: bankedNow, penalty: penalty, penaltyTonnes: penaltyTonnes, price: auction.clearingPrice, capex: ab.capex, yearProfit: yearProfit, bankEnd: c.bank, productionLevel: ab.productionLevel, actualOutput: ab.actualOutput, demandMult: ab.demandMult, revenue: ab.revenue };
+    var rec = { year: year, target: ab.target, actual: ab.actualIntensity, surplusDeficit: sd, bankUsed: bankUsed, bought: bought, sold: sold, bankedNow: bankedNow, penalty: penalty, penaltyTonnes: penaltyTonnes, price: auction.clearingPrice, capex: ab.capex, yearProfit: yearProfit, bankEnd: c.bank, productionLevel: ab.productionLevel, actualOutput: ab.actualOutput, demandMult: ab.demandMult, revenue: ab.revenue, cbam: cbam };
     c.history.push(rec);
     settled[c.id] = rec;
   });
@@ -404,6 +487,11 @@ if (typeof module !== "undefined" && module.exports) {
     effectiveCount: effectiveCount,
     botChooseAbatement: botChooseAbatement, botChooseOrder: botChooseOrder, botChooseProduction: botChooseProduction,
     clearAuction: clearAuction, weightedPick: weightedPick, percentile: percentile,
-    resolveAbatement: resolveAbatement, resolveTrading: resolveTrading
+    resolveAbatement: resolveAbatement, resolveTrading: resolveTrading,
+    CBAM_ELIGIBLE_SECTORS: CBAM_ELIGIBLE_SECTORS, cbamEligible: cbamEligible,
+    CBAM_OBLIGATION_FRACTION: CBAM_OBLIGATION_FRACTION, cbamObligationFraction: cbamObligationFraction,
+    CBAM_EU_ETS_PRICE_BASE: CBAM_EU_ETS_PRICE_BASE, euEtsPrice: euEtsPrice,
+    CBAM_DEFAULT_VALUE_MARKUP: CBAM_DEFAULT_VALUE_MARKUP, CBAM_VERIFICATION_COST: CBAM_VERIFICATION_COST,
+    botChooseCbam: botChooseCbam
   };
 }

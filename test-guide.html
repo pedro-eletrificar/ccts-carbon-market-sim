@@ -180,6 +180,11 @@
       <li><input type="checkbox"><span class="item-text"><strong>Advance to FY 2026-27</strong> and check which measures from Year 1 have actually landed vs. are still pending.<span class="expect">Expect: capex this period only reflects <em>newly</em> committed measures; the 0- and 1-year-lead measures from Year 1 now show "Active," the 2-year one still shows "Pending — effective FY 2027-28."</span></span></li>
       <li><input type="checkbox"><span class="item-text">Play through all three years to the final results screen and check the leaderboard and price chart (three points) render with no visual glitches.</span></li>
       <li><input type="checkbox"><span class="item-text">Register a new company and confirm the game fully resets (no leftover state from the last playthrough).</span></li>
+      <li><input type="checkbox"><span class="item-text">Turn <strong>on</strong> the CBAM module at setup and register in a CBAM-eligible sector (Aluminium, Iron &amp; Steel, Cement, or Fertilizer). On the Abatement Plan screen, drag the EU export-share slider up.<span class="expect">Expect: a live-updating "Est. CBAM Cost" figure, and at settlement a matching set of CBAM rows (EU-bound output, embedded emissions, certificates surrendered, CBAM cost) whose numbers line up with what the slider previewed.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">With CBAM on, toggle <strong>Article 9 recognized</strong> vs. <strong>not recognized</strong> at setup and compare the CBAM cost for an identical plan.<span class="expect">Expect: "recognized" deducts this year's CCTS clearing price from the EU reference price before charging you; "not recognized" charges the full amount regardless of your CCTS compliance cost.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">With CBAM on, uncheck "Submit verified emissions data" and compare the cost to the same plan with it checked.<span class="expect">Expect: unverified uses a higher (punitive default-value) embedded-emissions figure but skips the flat verification fee — which one is cheaper should depend on your EU export share.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Register in a non-CBAM-eligible sector (e.g. Textiles) with the module on.<span class="expect">Expect: no CBAM card appears on the Abatement Plan screen, and no CBAM rows appear at settlement — the module only applies to the four eligible sectors.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Register with the CBAM module left <strong>off</strong> (the default) and play a full game.<span class="expect">Expect: no CBAM card, no CBAM toggle visible mid-game, no CBAM settlement rows — the game plays identically to before the module existed.</span></span></li>
     </ul>
 
     <h2 id="simulator"><span class="badge">Mode 2</span>Market Simulator</h2>
@@ -191,6 +196,7 @@
       <li><input type="checkbox"><span class="item-text">Compare a run at <strong>Low</strong> cost uncertainty + 300 trials against <strong>High</strong> uncertainty + 10 trials.<span class="expect">Expect: the low-uncertainty/high-trial run has a visibly narrower price band (P10-P90) than the high-uncertainty/low-trial one.</span></span></li>
       <li><input type="checkbox"><span class="item-text">Push firms-per-sector and trials both to maximum (50 / 300) and confirm it still finishes in a few seconds without freezing the page.</span></li>
       <li><input type="checkbox"><span class="item-text">Scan the sector breakdown table for anything that looks broken — blank cells, negative percentages, "NaN".</span></li>
+      <li><input type="checkbox"><span class="item-text">Turn on the CBAM module before running.<span class="expect">Expect: a new "CBAM: EU border adjustment" card appears in the results with a non-zero average cost per year and a count of EU-exposed operators; re-running with the module off makes that card disappear and shouldn't otherwise change the forecast.</span></span></li>
     </ul>
 
     <h2 id="multiplayer"><span class="badge">Mode 3</span>Live Multiplayer</h2>
@@ -207,6 +213,9 @@
       <li><input type="checkbox"><span class="item-text">Submit a trading order, then <strong>refresh your browser tab</strong> mid-game.<span class="expect">Expect: you land back in your same seat with your progress intact, not bounced to a blank join screen.</span></span></li>
       <li><input type="checkbox"><span class="item-text">Check that everyone sees the <strong>same</strong> settlement results and leaderboard after the host advances through settlement.</span></li>
       <li><input type="checkbox"><span class="item-text">Play through all three compliance years to the shared final results screen, then have everyone leave the room.</span></li>
+      <li><input type="checkbox"><span class="item-text">Before starting, have the <strong>host</strong> turn on the CBAM module in the lobby.<span class="expect">Expect: every player in the lobby — not just the host — sees the module flip to "On" within a couple of seconds, and can see the Article 9 recognized/not-recognized choice once it's set.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">With CBAM on, a player in a CBAM-eligible seat sets an EU export share and submits, then <strong>updates</strong> the submission with a different share before the host advances.<span class="expect">Expect: the update sticks — settlement reflects the final submitted share, not the first one.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">With CBAM on, check that a player who never submits an EU export share still settles cleanly.<span class="expect">Expect: defaults to 0% EU share (no CBAM cost), not an error or a stuck phase.</span></span></li>
     </ul>
 
     <h2 id="crosscutting">4. Cross-cutting checks</h2>
