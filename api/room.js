@@ -2,12 +2,28 @@
 // One JSON blob per room at rooms/{CODE}.json. All game-resolution math
 // (bot decisions, auction clearing, settlement) runs here, via engine.js,
 // so every connected client sees an identical result.
+//
+// The action logic below is split into two layers on purpose:
+//   - a "pure" layer (createRoomState, advanceRoomPhase, setCbamConfigForRoom,
+//     readRoom, publicState, ...) that does the actual work and either
+//     returns a value or throws an ApiError — no req/res anywhere.
+//   - a thin HTTP-glue layer (actionCreate, actionAdvancePhase, ...) that
+//     calls the pure layer and translates the result/error into a response.
+// api/cohort.js requires this file and calls the pure layer directly (same
+// process, no HTTP round-trip) so a facilitator's bulk actions reuse the
+// exact same single-room logic instead of a parallel reimplementation.
 
 const { put, get: blobGet } = require("@vercel/blob");
 const engine = require("../engine.js");
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no O/0, I/1
 const MAX_NAME_LEN = 40;
+
+function ApiError(status, message) {
+  var e = new Error(message);
+  e.status = status;
+  return e;
+}
 
 function randomCode() {
   var s = "";
@@ -139,14 +155,16 @@ function makeDecideOrder(state) {
   };
 }
 
-async function actionCreate(req, res) {
+// ---------- pure layer (no req/res — throws ApiError on failure) ----------
+
+async function createRoomState() {
   var code, existing, attempts = 0;
   do {
     code = randomCode();
     existing = await readRoom(code);
     attempts++;
   } while (existing && attempts < 10);
-  if (existing) return badRequest(res, "Could not allocate a room code, try again");
+  if (existing) throw ApiError(400, "Could not allocate a room code, try again");
 
   var hostToken = randomToken();
   var state = {
@@ -164,7 +182,91 @@ async function actionCreate(req, res) {
     yearData: {}
   };
   await writeRoom(state);
-  res.status(200).json({ code: code, hostToken: hostToken, state: publicState(state) });
+  return { code: code, hostToken: hostToken, state: state };
+}
+
+async function setCbamConfigForRoom(code, hostToken, enabled, article9Recognized) {
+  var state = await readRoom(code);
+  if (!state) throw ApiError(404, "Room not found");
+  if (hostToken !== state.hostToken) throw ApiError(403, "Not authorized");
+  if (state.phase !== "lobby") throw ApiError(409, "Can only change this before the game starts");
+  state.cbamConfig = { enabled: !!enabled, article9Recognized: !!article9Recognized };
+  await writeRoom(state);
+  return state;
+}
+
+async function startGameForRoom(code, hostToken) {
+  var state = await readRoom(code);
+  if (!state) throw ApiError(404, "Room not found");
+  if (hostToken !== state.hostToken) throw ApiError(403, "Not authorized");
+  if (state.phase !== "lobby") throw ApiError(409, "Game already started");
+
+  engine.SECTORS.forEach(function (sector) {
+    var seat = state.seats[sector.id];
+    var archetype = seat.isHuman ? engine.archetypeById(seat.archetypeId) : engine.pick(engine.ARCHETYPES);
+    var strategy = seat.isHuman ? null : engine.pick(engine.BOT_STRATEGIES);
+    var company = engine.generateCompany(sector, archetype, seat.isHuman, strategy, 0.1, sector.id);
+    if (seat.isHuman) company.name = seat.claimedBy + " — " + sector.name + " Works";
+    state.companies[sector.id] = company;
+  });
+  state.phase = "briefing";
+  state.year = 1;
+  state.yearData = { 1: { scenario: engine.pickScenario() } };
+  await writeRoom(state);
+  return state;
+}
+
+async function advanceRoomPhase(code, hostToken) {
+  var state = await readRoom(code);
+  if (!state) throw ApiError(404, "Room not found");
+  if (hostToken !== state.hostToken) throw ApiError(403, "Not authorized");
+
+  var companies = engine.SECTORS.map(function (s) { return state.companies[s.id]; });
+  var yd = state.yearData[state.year] || (state.yearData[state.year] = {});
+
+  if (state.phase === "briefing") {
+    state.phase = "abatement";
+    state.submissions.abatement = {};
+    state.submissions.production = {};
+    state.submissions.cbam = {};
+  } else if (state.phase === "abatement") {
+    var abate = engine.resolveAbatement(companies, state.year, priorPrice(state), makeDecideAbatement(state), makeDecideProduction(state), yd.scenario);
+    yd.abate = abate;
+    state.phase = "trading";
+    state.submissions.trading = {};
+  } else if (state.phase === "trading") {
+    if (!yd.abate) throw ApiError(409, "Abatement has not been resolved yet");
+    var trading = engine.resolveTrading(companies, yd.abate, priorPrice(state), makeDecideOrder(state), state.year, state.cbamConfig, makeDecideCbam(state));
+    yd.orders = trading.orders;
+    yd.auction = trading.auction;
+    yd.settled = trading.settled;
+    state.priceHistory.push({ year: state.year, price: trading.auction.clearingPrice });
+    state.phase = "settlement";
+  } else if (state.phase === "settlement") {
+    if (state.year < engine.TOTAL_YEARS) {
+      state.year++;
+      state.phase = "briefing";
+      state.yearData[state.year] = { scenario: engine.pickScenario() };
+    } else {
+      state.phase = "summary";
+    }
+  } else {
+    throw ApiError(409, "Game already finished");
+  }
+
+  await writeRoom(state);
+  return state;
+}
+
+// ---------- HTTP-glue layer ----------
+
+async function actionCreate(req, res) {
+  try {
+    var r = await createRoomState();
+    res.status(200).json({ code: r.code, hostToken: r.hostToken, state: publicState(r.state) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
 }
 
 async function actionJoin(req, res, body) {
@@ -182,37 +284,21 @@ async function actionJoin(req, res, body) {
 }
 
 async function actionSetCbamConfig(req, res, body) {
-  var state = await readRoom(body.code);
-  if (!state) return notFound(res);
-  if (body.hostToken !== state.hostToken) return forbidden(res);
-  if (state.phase !== "lobby") return conflict(res, "Can only change this before the game starts");
-  state.cbamConfig = {
-    enabled: !!body.enabled,
-    article9Recognized: !!body.article9Recognized
-  };
-  await writeRoom(state);
-  res.status(200).json({ state: publicState(state) });
+  try {
+    var state = await setCbamConfigForRoom(body.code, body.hostToken, body.enabled, body.article9Recognized);
+    res.status(200).json({ state: publicState(state) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
 }
 
 async function actionStartGame(req, res, body) {
-  var state = await readRoom(body.code);
-  if (!state) return notFound(res);
-  if (body.hostToken !== state.hostToken) return forbidden(res);
-  if (state.phase !== "lobby") return conflict(res, "Game already started");
-
-  engine.SECTORS.forEach(function (sector) {
-    var seat = state.seats[sector.id];
-    var archetype = seat.isHuman ? engine.archetypeById(seat.archetypeId) : engine.pick(engine.ARCHETYPES);
-    var strategy = seat.isHuman ? null : engine.pick(engine.BOT_STRATEGIES);
-    var company = engine.generateCompany(sector, archetype, seat.isHuman, strategy, 0.1, sector.id);
-    if (seat.isHuman) company.name = seat.claimedBy + " — " + sector.name + " Works";
-    state.companies[sector.id] = company;
-  });
-  state.phase = "briefing";
-  state.year = 1;
-  state.yearData = { 1: { scenario: engine.pickScenario() } };
-  await writeRoom(state);
-  res.status(200).json({ state: publicState(state) });
+  try {
+    var state = await startGameForRoom(body.code, body.hostToken);
+    res.status(200).json({ state: publicState(state) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
 }
 
 async function actionSubmitAbatement(req, res, body) {
@@ -252,45 +338,12 @@ async function actionSubmitOrder(req, res, body) {
 }
 
 async function actionAdvancePhase(req, res, body) {
-  var state = await readRoom(body.code);
-  if (!state) return notFound(res);
-  if (body.hostToken !== state.hostToken) return forbidden(res);
-
-  var companies = engine.SECTORS.map(function (s) { return state.companies[s.id]; });
-  var yd = state.yearData[state.year] || (state.yearData[state.year] = {});
-
-  if (state.phase === "briefing") {
-    state.phase = "abatement";
-    state.submissions.abatement = {};
-    state.submissions.production = {};
-    state.submissions.cbam = {};
-  } else if (state.phase === "abatement") {
-    var abate = engine.resolveAbatement(companies, state.year, priorPrice(state), makeDecideAbatement(state), makeDecideProduction(state), yd.scenario);
-    yd.abate = abate;
-    state.phase = "trading";
-    state.submissions.trading = {};
-  } else if (state.phase === "trading") {
-    if (!yd.abate) return conflict(res, "Abatement has not been resolved yet");
-    var trading = engine.resolveTrading(companies, yd.abate, priorPrice(state), makeDecideOrder(state), state.year, state.cbamConfig, makeDecideCbam(state));
-    yd.orders = trading.orders;
-    yd.auction = trading.auction;
-    yd.settled = trading.settled;
-    state.priceHistory.push({ year: state.year, price: trading.auction.clearingPrice });
-    state.phase = "settlement";
-  } else if (state.phase === "settlement") {
-    if (state.year < engine.TOTAL_YEARS) {
-      state.year++;
-      state.phase = "briefing";
-      state.yearData[state.year] = { scenario: engine.pickScenario() };
-    } else {
-      state.phase = "summary";
-    }
-  } else {
-    return conflict(res, "Game already finished");
+  try {
+    var state = await advanceRoomPhase(body.code, body.hostToken);
+    res.status(200).json({ state: publicState(state) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
   }
-
-  await writeRoom(state);
-  res.status(200).json({ state: publicState(state) });
 }
 
 module.exports = async function handler(req, res) {
@@ -328,3 +381,14 @@ module.exports = async function handler(req, res) {
     res.status(500).json({ error: "Internal error", message: e && e.message });
   }
 };
+
+// Exposed for api/cohort.js to call the pure layer in-process — a
+// facilitator's bulk actions reuse this exact single-room logic rather
+// than a parallel reimplementation.
+module.exports.createRoomState = createRoomState;
+module.exports.advanceRoomPhase = advanceRoomPhase;
+module.exports.setCbamConfigForRoom = setCbamConfigForRoom;
+module.exports.startGameForRoom = startGameForRoom;
+module.exports.readRoom = readRoom;
+module.exports.publicState = publicState;
+module.exports.ApiError = ApiError;

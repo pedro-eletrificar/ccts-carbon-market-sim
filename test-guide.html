@@ -147,9 +147,9 @@
 
 <main>
   <article class="doc">
-    <div class="eyebrow">Internal Testing Guide · All three modes</div>
+    <div class="eyebrow">Internal Testing Guide · All three modes + the facilitator tool</div>
     <h1>Testing round: what to try, what to report</h1>
-    <p class="lede">This build has three modes — Solo vs. AI, the Market Simulator, and Live Multiplayer — and none of them have had real users kick the tires yet. This guide is a punch list for that first pass: concrete things to try in each mode, what a working result looks like, and how to log what you find.</p>
+    <p class="lede">This build has three modes — Solo vs. AI, the Market Simulator, and Live Multiplayer — plus a Facilitator Dashboard for running several Multiplayer rooms as one training session. None of it has had real users kick the tires yet. This guide is a punch list for that first pass: concrete things to try in each mode, what a working result looks like, and how to log what you find.</p>
 
     <div class="callout">
       <span class="c-label">Before you start</span>
@@ -162,8 +162,9 @@
         <li><a href="#solo">1. Solo vs. AI Operators</a></li>
         <li><a href="#simulator">2. Market Simulator</a></li>
         <li><a href="#multiplayer">3. Live Multiplayer</a></li>
-        <li><a href="#crosscutting">4. Cross-cutting checks</a></li>
-        <li><a href="#reporting">5. Reporting what you find</a></li>
+        <li><a href="#facilitator">4. Facilitator Dashboard</a></li>
+        <li><a href="#crosscutting">5. Cross-cutting checks</a></li>
+        <li><a href="#reporting">6. Reporting what you find</a></li>
       </ol>
     </div>
 
@@ -185,6 +186,8 @@
       <li><input type="checkbox"><span class="item-text">With CBAM on, uncheck "Submit verified emissions data" and compare the cost to the same plan with it checked.<span class="expect">Expect: unverified uses a higher (punitive default-value) embedded-emissions figure but skips the flat verification fee — which one is cheaper should depend on your EU export share.</span></span></li>
       <li><input type="checkbox"><span class="item-text">Register in a non-CBAM-eligible sector (e.g. Textiles) with the module on.<span class="expect">Expect: no CBAM card appears on the Abatement Plan screen, and no CBAM rows appear at settlement — the module only applies to the four eligible sectors.</span></span></li>
       <li><input type="checkbox"><span class="item-text">Register with the CBAM module left <strong>off</strong> (the default) and play a full game.<span class="expect">Expect: no CBAM card, no CBAM toggle visible mid-game, no CBAM settlement rows — the game plays identically to before the module existed.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">On a browser where you've never played before, check the landing page for the <strong>guided tour offer</strong>, then take it.<span class="expect">Expect: five short tip cards appear in order across Setup, Briefing, Abatement, Trading, and Settlement, each dismissible with "Skip." Once finished (or dismissed from the landing page), the offer banner is replaced by a "Replay the guided tour" link in the footnote.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Play a full three-year game to the final results screen and check the <strong>debrief section</strong> below the leaderboard.<span class="expect">Expect: a headline profit delta versus a "Cost-Minimizing Complier" counterfactual, a dual-line chart (your actual cumulative profit vs. the counterfactual), and a year-by-year comparison table — all numbers should be finite (no NaN) and the chart's two lines should visibly diverge if your strategy differed from a straight complier.</span></span></li>
     </ul>
 
     <h2 id="simulator"><span class="badge">Mode 2</span>Market Simulator</h2>
@@ -216,9 +219,25 @@
       <li><input type="checkbox"><span class="item-text">Before starting, have the <strong>host</strong> turn on the CBAM module in the lobby.<span class="expect">Expect: every player in the lobby — not just the host — sees the module flip to "On" within a couple of seconds, and can see the Article 9 recognized/not-recognized choice once it's set.</span></span></li>
       <li><input type="checkbox"><span class="item-text">With CBAM on, a player in a CBAM-eligible seat sets an EU export share and submits, then <strong>updates</strong> the submission with a different share before the host advances.<span class="expect">Expect: the update sticks — settlement reflects the final submitted share, not the first one.</span></span></li>
       <li><input type="checkbox"><span class="item-text">With CBAM on, check that a player who never submits an EU export share still settles cleanly.<span class="expect">Expect: defaults to 0% EU share (no CBAM cost), not an error or a stuck phase.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">On the shared final results screen, check that every claimed seat's player sees the same <strong>debrief section</strong> content (allowing for the profit delta being computed relative to each player's own company).<span class="expect">Expect: the counterfactual chart and comparison table render for anyone who held a seat; a spectator (no seat claimed) sees the leaderboard and price chart but no debrief section.</span></span></li>
     </ul>
 
-    <h2 id="crosscutting">4. Cross-cutting checks</h2>
+    <h2 id="facilitator"><span class="badge">Mode 4</span>Facilitator Dashboard</h2>
+    <div class="prereq">Needs: just you, one browser tab (a real test also wants a few people to join the rooms)</div>
+    <p>For running a training session with several breakout groups at once — each group gets its own ordinary Live Multiplayer room, but one facilitator can start and advance all of them from a single screen.</p>
+    <ul class="checklist">
+      <li><input type="checkbox"><span class="item-text">From the Live Multiplayer entry screen (Host or Join a Room), find and open the <strong>Facilitator Dashboard</strong> link.<span class="expect">Expect: a small, secondary link below the create/join cards — not a prominent button, since most players will never need it.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Create a new cohort with a session label and 3+ rooms.<span class="expect">Expect: a facilitator code (format <code>F-XXXXX</code>) and a facilitator token are both shown, plus one 4-letter room code per room, all still in Lobby.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Share one room's 4-letter code with someone and have them join it from the ordinary Live Multiplayer join screen.<span class="expect">Expect: joining a facilitator-created room works exactly like joining any other room — no special steps.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Click <strong>Start All Rooms</strong>.<span class="expect">Expect: every room in the cohort moves from Lobby to Briefing, visible on the dashboard within a couple of seconds.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Click <strong>Advance All Rooms</strong> a few times in a row.<span class="expect">Expect: every room advances through Abatement → Exchange → Settlement together, with unclaimed seats auto-filled by AI exactly as in an ordinary room.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Use the per-room <strong>Advance</strong> button on just one room instead of the bulk button.<span class="expect">Expect: only that room advances — the others stay where they were, so rooms can be at different phases at the same time.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Before starting, toggle the <strong>CBAM module</strong> on for the whole cohort.<span class="expect">Expect: every room in the cohort picks up the CBAM setting — confirm by opening one room's join screen and checking the lobby's CBAM card.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Reload the page, then use <strong>Reconnect to a cohort</strong> with the facilitator code and token you were given.<span class="expect">Expect: the dashboard comes back exactly as you left it. Also try the "Reconnect to last cohort" shortcut, which should appear automatically if you reconnected or created a cohort in this browser before.</span></span></li>
+      <li><input type="checkbox"><span class="item-text">Try reconnecting with the right code but a <strong>wrong token</strong>.<span class="expect">Expect: the dashboard still loads (read access needs no token), but clicking Start All or Advance All shows a clear "Not authorized" error instead of silently failing.</span></span></li>
+    </ul>
+
+    <h2 id="crosscutting">5. Cross-cutting checks</h2>
     <p>Worth a quick pass regardless of which mode you're focused on:</p>
     <ul class="checklist">
       <li><input type="checkbox"><span class="item-text">Toggle your device/browser between light and dark mode mid-session — text should stay readable, nothing should go invisible.</span></li>
@@ -226,7 +245,7 @@
       <li><input type="checkbox"><span class="item-text">If you're comfortable with browser dev tools: open the console (F12 or Cmd+Opt+J) and check for red errors while you play. Screenshot anything you see.</span></li>
     </ul>
 
-    <h2 id="reporting">5. Reporting what you find</h2>
+    <h2 id="reporting">6. Reporting what you find</h2>
     <p>Log issues on the project's GitHub Issues page: <a href="https://github.com/pedro-eletrificar/ccts-carbon-market-sim/issues" target="_blank" rel="noopener">github.com/pedro-eletrificar/ccts-carbon-market-sim/issues</a>. For each one, include:</p>
     <div class="table-wrap">
     <table>

@@ -192,6 +192,26 @@
     border-radius: 10px;
     padding: 1.25rem 1.4rem;
   }
+
+  .tour-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+    border-radius: 10px; padding: 0.9rem 1.2rem; margin-bottom: 1.25rem;
+  }
+  .tutorial-tip {
+    background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+    border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 0.9rem 1.1rem; margin-bottom: 1rem;
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .tutorial-tip .tt-label {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent);
+  }
+  .tutorial-tip p { margin: 0; color: var(--ink-2); font-size: 13.5px; }
+  .tutorial-tip .tt-actions { display: flex; gap: 0.75rem; align-items: center; }
+  .tutorial-tip .tt-skip { font-size: 12px; color: var(--muted); background: none; border: none; cursor: pointer; text-decoration: underline; padding: 0; }
   .stack { display: flex; flex-direction: column; gap: 1rem; }
   .row { display: flex; gap: 1rem; flex-wrap: wrap; }
   .grid-2 { display: grid; grid-template-columns: 300px 1fr; gap: 1.25rem; align-items: start; }
@@ -467,6 +487,7 @@
     priceHistory: [],
     yearData: {},
     draft: { sectorId: null, archetypeId: null },
+    tutorial: { active: false, step: 0 },
     abateDraft: 0,
     productionDraft: 1,
     cbamConfig: { enabled: false, article9Recognized: false },
@@ -488,6 +509,52 @@
 
   function companyById(id) { return G.companies.filter(function (c) { return c.id === id; })[0]; }
   function player() { return companyById(G.playerId); }
+
+  /* ---------- first-run tutorial ---------- */
+  // A one-time, non-blocking walkthrough: one tip card per real screen in
+  // Year 1's flow, advanced only by the player dismissing it. Purely
+  // additive — the underlying screen renders and behaves identically
+  // whether or not a tip is showing on top of it.
+
+  var TUTORIAL_STEPS = [
+    { screen: "setup", title: "1 of 5 · Register a company", text: "Pick any sector and starting posture — Cement is a good first pick since its targets are officially disclosed, not illustrative. Posture trades off starting intensity against how cheap further cuts are." },
+    { screen: "briefing", title: "2 of 5 · Target briefing", text: "Every compliance year opens here: your notified intensity target and this year's macro demand scenario. Nothing to decide yet — read it, then plan your response." },
+    { screen: "abatement", title: "3 of 5 · Production & abatement plan", text: "Two real decisions: how many abatement measures to commit (cheapest first — bigger ones take a year or more to actually land), and how much of your fixed capacity to run given this year's demand. Watch the live preview as you move the sliders." },
+    { screen: "trading", title: "4 of 5 · Exchange", text: "Post one order for the trading window. Short? You're buying to cover the gap, or eating a penalty if you don't. Long? You're selling the surplus, or banking whatever you don't sell." },
+    { screen: "settlement", title: "5 of 5 · Settlement", text: "Everything resolves here: the auction clears, your penalty or banked surplus is booked, and this year's profit lands. Play out all three years — early decisions echo forward." }
+  ];
+
+  function tutorialStorageGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function tutorialStorageSet(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* storage unavailable — tutorial just won't remember across visits */ } }
+  function tutorialOffered() { return tutorialStorageGet("cctsTutorialOffered") === "1"; }
+
+  function tutorialStart() {
+    tutorialStorageSet("cctsTutorialOffered", "1");
+    G.tutorial = { active: true, step: 0 };
+  }
+  function tutorialAdvance() {
+    G.tutorial.step++;
+    if (G.tutorial.step >= TUTORIAL_STEPS.length) tutorialEnd();
+  }
+  function tutorialEnd() {
+    G.tutorial = { active: false, step: 0 };
+    tutorialStorageSet("cctsTutorialDone", "1");
+  }
+
+  function tutorialTipCard(screenId) {
+    if (!G.tutorial.active) return "";
+    var step = TUTORIAL_STEPS[G.tutorial.step];
+    if (!step || step.screen !== screenId) return "";
+    var isLast = G.tutorial.step === TUTORIAL_STEPS.length - 1;
+    return '<div class="tutorial-tip">' +
+      '<span class="tt-label">Guided tour — ' + step.title + '</span>' +
+      '<p>' + step.text + '</p>' +
+      '<div class="tt-actions">' +
+        '<button class="btn btn-sm" data-action="tutorial-next">' + (isLast ? "Got it, finish tour" : "Got it, next →") + '</button>' +
+        '<button class="tt-skip" data-action="tutorial-skip">Skip the tour</button>' +
+      '</div>' +
+    '</div>';
+  }
 
   /* ---------- multiplayer client ---------- */
 
@@ -650,6 +717,161 @@
       MP.state = data.state;
     } catch (e) { MP.entryError = e.message; }
     MP.busy = false; render();
+  }
+
+  /* ---------- facilitator dashboard client ---------- */
+  // A cohort batch-creates N ordinary /api/room.js rooms under one facilitator
+  // identity (see api/cohort.js). This browser only ever holds facilitatorCode
+  // + facilitatorToken — individual room hostTokens stay server-side in the
+  // cohort document, so bulk start/advance calls never need N host tokens here.
+
+  var FAC = {
+    code: null,
+    token: null,
+    label: null,
+    rooms: [],
+    pollHandle: null,
+    entryError: null,
+    createDraft: { label: "", roomCount: 3 },
+    reconnectDraft: { code: "", token: "" },
+    busy: false
+  };
+
+  function facStorageKey(code) { return "cctsFac:" + code; }
+
+  function facSaveSession() {
+    if (!FAC.code) return;
+    try {
+      sessionStorage.setItem(facStorageKey(FAC.code), JSON.stringify({ facilitatorToken: FAC.token, label: FAC.label }));
+      sessionStorage.setItem("cctsFacLast", FAC.code);
+    } catch (e) { /* storage unavailable — session just won't survive a refresh */ }
+  }
+
+  function facLoadSession(code) {
+    try {
+      var raw = sessionStorage.getItem(facStorageKey(code));
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  async function facApi(action, payload) {
+    var body = Object.assign({ action: action }, payload || {});
+    var res = await fetch("/api/cohort", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || ("Request failed (" + res.status + ")"));
+    return data;
+  }
+
+  function facStopPolling() {
+    if (FAC.pollHandle) { clearInterval(FAC.pollHandle); FAC.pollHandle = null; }
+  }
+
+  function facRoomsSignature(rooms) {
+    return rooms.map(function (r) { return r.code + ":" + (r.state ? r.state.version : "x"); }).join(",");
+  }
+
+  function facStartPolling() {
+    facStopPolling();
+    FAC.lastSig = facRoomsSignature(FAC.rooms);
+    FAC.pollHandle = setInterval(function () {
+      if (!FAC.code) return;
+      facApi("state", { facilitatorCode: FAC.code }).then(function (data) {
+        var sig = facRoomsSignature(data.rooms);
+        FAC.rooms = data.rooms; FAC.label = data.label;
+        if (sig !== FAC.lastSig) {
+          FAC.lastSig = sig;
+          if (G.screen === "facilitator") render();
+        }
+      }).catch(function () { /* transient network error — next poll retries */ });
+    }, 2500);
+  }
+
+  function facReset() {
+    facStopPolling();
+    FAC.code = null; FAC.token = null; FAC.label = null; FAC.rooms = []; FAC.entryError = null;
+  }
+
+  async function facCreateCohort() {
+    FAC.busy = true; FAC.entryError = null; render();
+    try {
+      var data = await facApi("create", { label: FAC.createDraft.label, roomCount: FAC.createDraft.roomCount });
+      FAC.code = data.facilitatorCode; FAC.token = data.facilitatorToken; FAC.label = data.label;
+      facSaveSession();
+      var full = await facApi("state", { facilitatorCode: FAC.code });
+      FAC.rooms = full.rooms;
+      facStartPolling();
+    } catch (e) { FAC.entryError = e.message; }
+    FAC.busy = false; render();
+  }
+
+  async function facReconnect() {
+    var code = (FAC.reconnectDraft.code || "").trim().toUpperCase();
+    var token = (FAC.reconnectDraft.token || "").trim();
+    if (!code || !token) { FAC.entryError = "Enter both the facilitator code and token"; render(); return; }
+    FAC.busy = true; FAC.entryError = null; render();
+    try {
+      var data = await facApi("state", { facilitatorCode: code });
+      FAC.code = code; FAC.token = token; FAC.label = data.label; FAC.rooms = data.rooms;
+      facSaveSession();
+      facStartPolling();
+    } catch (e) { FAC.entryError = e.message; }
+    FAC.busy = false; render();
+  }
+
+  function facRejoinLast() {
+    var code = null;
+    try { code = sessionStorage.getItem("cctsFacLast"); } catch (e) {}
+    if (!code) return;
+    var saved = facLoadSession(code);
+    if (!saved) { FAC.reconnectDraft.code = code; render(); return; }
+    FAC.busy = true; FAC.entryError = null; render();
+    facApi("state", { facilitatorCode: code }).then(function (data) {
+      FAC.code = code; FAC.token = saved.facilitatorToken; FAC.label = data.label; FAC.rooms = data.rooms;
+      facSaveSession();
+      facStartPolling();
+    }).catch(function (e) {
+      FAC.entryError = e.message;
+    }).then(function () { FAC.busy = false; render(); });
+  }
+
+  async function facStartAll() {
+    FAC.busy = true; render();
+    try {
+      await facApi("startAll", { facilitatorCode: FAC.code, facilitatorToken: FAC.token });
+      var data = await facApi("state", { facilitatorCode: FAC.code });
+      FAC.rooms = data.rooms;
+    } catch (e) { FAC.entryError = e.message; }
+    FAC.busy = false; render();
+  }
+
+  async function facAdvanceAll() {
+    FAC.busy = true; render();
+    try {
+      await facApi("advanceAll", { facilitatorCode: FAC.code, facilitatorToken: FAC.token });
+      var data = await facApi("state", { facilitatorCode: FAC.code });
+      FAC.rooms = data.rooms;
+    } catch (e) { FAC.entryError = e.message; }
+    FAC.busy = false; render();
+  }
+
+  async function facAdvanceOne(roomCode) {
+    FAC.busy = true; render();
+    try {
+      await facApi("advanceOne", { facilitatorCode: FAC.code, facilitatorToken: FAC.token, roomCode: roomCode });
+      var data = await facApi("state", { facilitatorCode: FAC.code });
+      FAC.rooms = data.rooms;
+    } catch (e) { FAC.entryError = e.message; }
+    FAC.busy = false; render();
+  }
+
+  async function facSetCbamConfigAll(enabled, article9Recognized) {
+    FAC.busy = true; render();
+    try {
+      await facApi("setCbamConfigAll", { facilitatorCode: FAC.code, facilitatorToken: FAC.token, enabled: enabled, article9Recognized: article9Recognized });
+      var data = await facApi("state", { facilitatorCode: FAC.code });
+      FAC.rooms = data.rooms;
+    } catch (e) { FAC.entryError = e.message; }
+    FAC.busy = false; render();
   }
 
   function startGame() {
@@ -877,6 +1099,77 @@
     return svg;
   }
 
+  function debriefProfitChart(actualPoints, cfPoints, w) {
+    w = w || 520;
+    var h = 200;
+    var padL = 60, padR = 16, padT = 18, padB = 30;
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    var allV = actualPoints.concat(cfPoints).concat([0]);
+    var maxV = Math.max.apply(null, allV), minV = Math.min.apply(null, allV);
+    var range = (maxV - minV) || 1;
+    var n = actualPoints.length;
+    var xScale = function (i) { return n > 1 ? padL + (i / (n - 1)) * innerW : padL + innerW / 2; };
+    var yScale = function (v) { return padT + innerH - ((v - minV) / range) * innerH; };
+    var svg = svgOpen(w, h);
+    for (var i = 0; i <= 4; i++) {
+      var gy = padT + (innerH / 4) * i;
+      svg += '<line x1="' + padL + '" y1="' + gy + '" x2="' + (w - padR) + '" y2="' + gy + '" stroke="var(--grid)" stroke-width="1" />';
+    }
+    if (minV < 0 && maxV > 0) {
+      var zy = yScale(0);
+      svg += '<line x1="' + padL + '" y1="' + zy + '" x2="' + (w - padR) + '" y2="' + zy + '" stroke="var(--baseline)" stroke-width="1.5" />';
+    }
+    function lineFor(points, color, dash) {
+      var d = points.map(function (v, i) { return (i === 0 ? "M" : "L") + xScale(i) + "," + yScale(v); }).join(" ");
+      return '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="2.5" stroke-linecap="round"' + (dash ? ' stroke-dasharray="5,4"' : '') + ' />';
+    }
+    svg += lineFor(cfPoints, "var(--muted)", true);
+    svg += lineFor(actualPoints, "var(--accent)", false);
+    cfPoints.forEach(function (v, i) { svg += '<circle cx="' + xScale(i) + '" cy="' + yScale(v) + '" r="3.5" fill="var(--muted)" />'; });
+    actualPoints.forEach(function (v, i) { svg += '<circle cx="' + xScale(i) + '" cy="' + yScale(v) + '" r="4.5" fill="var(--accent)" />'; });
+    for (var i2 = 0; i2 < n; i2++) {
+      svg += '<text x="' + xScale(i2) + '" y="' + (h - 8) + '" font-size="10.5" text-anchor="middle" fill="var(--muted)">' + (i2 === 0 ? "Start" : fyLabel(i2)) + '</text>';
+    }
+    svg += "</svg>";
+    return '<div class="row" style="gap:1.25rem;font-size:11.5px;color:var(--ink-2);margin-bottom:0.4rem;">' +
+      '<span><svg width="14" height="10"><line x1="0" y1="5" x2="14" y2="5" stroke="var(--accent)" stroke-width="2.5"/></svg> Your actual path</span>' +
+      '<span><svg width="14" height="10"><line x1="0" y1="5" x2="14" y2="5" stroke="var(--muted)" stroke-width="2.5" stroke-dasharray="4,3"/></svg> Minimum-cost compliant baseline</span>' +
+    '</div>' + svg;
+  }
+
+  // Shared by Solo's Final Results and Multiplayer's shared summary screen.
+  // `history` is the company's real per-year settlement records
+  // (company.history); `priceHistoryArr` and `scenarioByYear` are the
+  // real market conditions those years actually played out under.
+  function renderDebriefSection(company, sector, history, priceHistoryArr, scenarioByYear) {
+    if (!history.length) return "";
+    var cf = computeComplierCounterfactual(company, sector, scenarioByYear, priceHistoryArr);
+    var actualCum = 0, actualPoints = [0], cfPoints = [0];
+    var rows = history.map(function (h, i) {
+      actualCum += h.yearProfit;
+      actualPoints.push(actualCum);
+      cfPoints.push(cf[i].cumulativeProfit);
+      return { year: h.year, actualProfit: h.yearProfit, cfProfit: cf[i].yearProfit };
+    });
+    var finalDelta = actualCum - cf[cf.length - 1].cumulativeProfit;
+    var deltaGood = finalDelta >= 0;
+    return '<div class="card stack">' +
+      '<h3 style="margin:0;">How you compared to a minimum-cost compliant strategy</h3>' +
+      '<p style="margin:0;">A same-company baseline: what a simple “commit just enough to comply” strategy — no strategic timing, no demand-chasing, running at 100% of fixed capacity — would have earned from this exact starting position, settled against the real clearing prices each year actually cleared at. An idealized comparison (assumes you could always fully trade your surplus or deficit at that price), not a full parallel simulation.</p>' +
+      '<div class="kpi-row">' +
+        '<div class="kpi"><span class="kv" style="color:' + (deltaGood ? "var(--good)" : "var(--critical)") + ';">' + (deltaGood ? "+" : "") + cr(finalDelta) + '</span><span class="kl">Your Cumulative Profit vs. the Baseline</span></div>' +
+      '</div>' +
+      '<div class="chart-card">' + debriefProfitChart(actualPoints, cfPoints) + '</div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Year</th><th class="num">Your Profit</th><th class="num">Baseline Profit</th><th class="num">Delta</th></tr></thead><tbody>' +
+        rows.map(function (r) {
+          var d = r.actualProfit - r.cfProfit;
+          return '<tr><td>' + fyLabel(r.year) + '</td><td class="num">' + cr(r.actualProfit) + '</td><td class="num">' + cr(r.cfProfit) + '</td>' +
+            '<td class="num" style="color:' + (d >= 0 ? "var(--good)" : "var(--critical)") + ';">' + (d >= 0 ? "+" : "") + cr(d) + '</td></tr>';
+        }).join("") +
+      '</tbody></table></div>' +
+    '</div>';
+  }
+
   function leaderboardChart(companies, w) {
     w = w || 520;
     var rowH = 30;
@@ -961,6 +1254,7 @@
       case "simrunning": return renderSimRunning();
       case "simresults": return renderSimResults();
       case "mp": return renderMultiplayer();
+      case "facilitator": return renderFacilitator();
       default: return "";
     }
   }
@@ -969,6 +1263,15 @@
 
   function renderLanding() {
     return '<div class="wrap stack">' +
+      (tutorialOffered() ? "" :
+        '<div class="tour-banner">' +
+          '<div><strong>New here?</strong> <span class="muted">Take a 90-second guided tour through your first compliance year — five short tips, dismissible any time.</span></div>' +
+          '<div class="row" style="gap:0.6rem;">' +
+            '<button class="btn btn-sm" data-action="start-tutorial">Start Guided Tour →</button>' +
+            '<button class="btn btn-ghost btn-sm" data-action="dismiss-tutorial-offer">No thanks</button>' +
+          '</div>' +
+        '</div>'
+      ) +
       '<div class="hero">' +
         '<div class="hero-badge"><span class="hb-dot"></span>India · Carbon Credit Trading Scheme · Compliance Mechanism</div>' +
         '<h1>Run a company inside India’s <span class="hl">carbon market</span>.</h1>' +
@@ -1005,13 +1308,16 @@
           '<button class="btn btn-ghost" data-action="goto-mp">Host or Join a Room →</button>' +
         '</div>' +
       '</div>' +
-      '<p class="foot-note">Testing this build? See the <a href="test-guide.html" style="color:var(--accent);">Testing Guide</a> for a checklist across all three modes and how to report issues. An unofficial internal build for EDF (Environmental Defense Fund) testing — not a published EDF product. Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali and Pulp & Paper are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Company-level financials are illustrative.</p>' +
+      '<p class="foot-note">Testing this build? See the <a href="test-guide.html" style="color:var(--accent);">Testing Guide</a> for a checklist across all three modes and how to report issues. An unofficial internal build for EDF (Environmental Defense Fund) testing — not a published EDF product. Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali and Pulp & Paper are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Company-level financials are illustrative.' +
+        (tutorialOffered() ? ' <button class="tt-skip" data-action="start-tutorial" style="font-size:11.5px;">Replay the guided tour →</button>' : '') +
+      '</p>' +
     '</div>';
   }
 
   function renderSetup() {
     var sec = G.draft.sectorId ? sectorById(G.draft.sectorId) : null;
     var html = '<div class="wrap stack">';
+    html += tutorialTipCard("setup");
     html += '<div class="eyebrow">Registration</div><h2>Choose your sector</h2>';
     html += '<div class="sector-grid">';
     SECTORS.forEach(function (s) {
@@ -1115,6 +1421,7 @@
       '<div class="stack">' + sidebarCard() + '</div>' +
       '<div class="stack">' +
         stepsBar("briefing") +
+        tutorialTipCard("briefing") +
         '<div class="eyebrow">Compliance Period ' + G.year + ' of ' + TOTAL_YEARS + '</div>' +
         '<h2>' + yearLabel + ' target notified</h2>' +
         '<div class="card stack">' +
@@ -1180,6 +1487,7 @@
       '<div class="stack">' + sidebarCard() + '</div>' +
       '<div class="stack">' +
         stepsBar("abatement") +
+        tutorialTipCard("abatement") +
         '<h2>Production & abatement plan</h2>' +
         renderScenarioCard(yd.scenario, p.sectorId) +
         '<h3 style="margin-bottom:0;">Production planning</h3>' +
@@ -1334,6 +1642,7 @@
       '</div>' +
       '<div class="stack">' +
         stepsBar("trading") +
+        tutorialTipCard("trading") +
         '<h2>Exchange · CCC trading window</h2>' +
         '<p>Post your order to the power exchange. A uniform clearing price is set where total demand meets total supply across all nine operators, bounded by the planned price collar (₹' + moneyInt.format(PRICE_FLOOR) + '–₹' + moneyInt.format(PRICE_CEIL) + '/tCO2e).</p>' +
         '<div class="card stack">' +
@@ -1362,6 +1671,7 @@
       '<div class="stack">' + sidebarCard() + '</div>' +
       '<div class="stack">' +
         stepsBar("settlement") +
+        tutorialTipCard("settlement") +
         '<h2>' + yearLabel + ' settlement</h2>' +
         '<div class="chart-card"><h3 style="margin-top:0;">Auction crossing</h3>' + crossingChart(auction) + '</div>' +
         '<div class="card stack">' +
@@ -1417,6 +1727,8 @@
     var actualAbatement = G.companies.reduce(function (s, c) {
       return s + cumulativeReduction(c, effectiveCount(c, TOTAL_YEARS)) * c.output;
     }, 0);
+    var scenarioByYear = [];
+    for (var sy = 1; sy <= TOTAL_YEARS; sy++) scenarioByYear.push(G.yearData[sy] ? G.yearData[sy].scenario : null);
     var html = '<div class="wrap stack">' +
       '<div class="eyebrow">Compliance period closed · ' + fyLabel(1) + ' – ' + fyLabel(TOTAL_YEARS) + '</div>' +
       '<h1>Final results</h1>' +
@@ -1432,6 +1744,7 @@
       '<div class="card"><h3 style="margin-top:0;">Market-wide abatement</h3>' +
         '<p>Across all nine simulated operators, ' + fyLabel(TOTAL_YEARS) + ' intensity targets implied ' + moneyInt.format(Math.round(marketAbatement)) + ' tCO2e/yr of required abatement versus baseline. The market actually delivered ' + moneyInt.format(Math.round(actualAbatement)) + ' tCO2e/yr (' + pct(marketAbatement ? (actualAbatement / marketAbatement) * 100 : 0) + ' of the required cut) once trading, banking, penalties and investment lead times settled.</p>' +
       '</div>' +
+      renderDebriefSection(p, sectorById(p.sectorId), p.history, G.priceHistory, scenarioByYear) +
       '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="restart">Register a New Company →</button></div>' +
       '<p class="foot-note">Modeled on the CCTS as notified through February 2026. Sector baselines, abatement costs, output volumes and company financials are illustrative approximations for gameplay, not official BEE/CERC figures.</p>' +
     '</div>';
@@ -1696,6 +2009,7 @@
         '<button class="btn" data-action="mp-join-lookup" style="align-self:flex-start;"' + (MP.busy ? " disabled" : "") + '>Join Room →</button>' +
         (last ? '<button class="btn btn-ghost btn-sm" data-action="mp-rejoin-last" style="align-self:flex-start;">Rejoin last room (' + escapeHtml(last) + ') →</button>' : "") +
       '</div>' +
+      '<p class="muted" style="margin:0;font-size:12.5px;">Running a training session for a group? <button class="tt-skip" data-action="goto-facilitator" style="font-size:12.5px;">Open the Facilitator Dashboard →</button></p>' +
       '<div class="row" style="justify-content:flex-start;"><button class="btn btn-ghost" data-action="back-landing">← Back</button></div>' +
     '</div>';
   }
@@ -1997,9 +2311,129 @@
         '<div class="chart-card" style="flex:1;min-width:320px;"><h3 style="margin-top:0;">CCC clearing price by period</h3>' + priceTrajectoryChart(520, MP.state.priceHistory) + '</div>' +
         '<div class="card" style="flex:1;min-width:320px;"><h3 style="margin-top:0;">Nine-operator leaderboard</h3>' + leaderboardChart(ranked) + '</div>' +
       '</div>' +
+      (mine ? renderDebriefSection(mine, sectorById(mine.sectorId), mine.history, MP.state.priceHistory, mpScenarioByYear()) : "") +
       '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="mp-leave">Leave Room →</button></div>' +
     '</div>';
     return html;
+  }
+
+  function mpScenarioByYear() {
+    var arr = [];
+    for (var y = 1; y <= TOTAL_YEARS; y++) arr.push(MP.state.yearData[y] ? MP.state.yearData[y].scenario : null);
+    return arr;
+  }
+
+  /* ---------- render: facilitator dashboard ---------- */
+
+  function facErrorBanner() {
+    if (!FAC.entryError) return "";
+    return '<div class="card" style="border-color:var(--critical);"><p style="margin:0;color:var(--critical);">' + escapeHtml(FAC.entryError) + '</p></div>';
+  }
+
+  function renderFacilitator() {
+    if (!FAC.code) return renderFacEntry();
+    return renderFacDashboard();
+  }
+
+  function renderFacEntry() {
+    var last = null;
+    try { last = sessionStorage.getItem("cctsFacLast"); } catch (e) {}
+    return '<div class="wrap-narrow stack">' +
+      '<div class="eyebrow">Facilitator Dashboard</div>' +
+      '<h2>Run a training session</h2>' +
+      '<p>Create a batch of rooms for a workshop or training cohort. Each room is an ordinary Live Multiplayer room that a breakout group joins by its own 4-letter code — this dashboard lets you start and advance all of them together instead of hopping between browser tabs.</p>' +
+      facErrorBanner() +
+      '<div class="card stack">' +
+        '<h3 style="margin:0;">Create a new cohort</h3>' +
+        '<label class="field">Session label (optional)<input type="text" id="fac-label-input" maxlength="80" value="' + escapeHtml(FAC.createDraft.label) + '" placeholder="e.g. CII Steel Sector Workshop" /></label>' +
+        '<label class="field">Number of rooms (1–12)<input type="number" id="fac-roomcount-input" min="1" max="12" value="' + FAC.createDraft.roomCount + '" style="max-width:100px;" /></label>' +
+        '<button class="btn" data-action="fac-create" style="align-self:flex-start;"' + (FAC.busy ? " disabled" : "") + '>Create Cohort →</button>' +
+      '</div>' +
+      '<div class="card stack">' +
+        '<h3 style="margin:0;">Reconnect to a cohort</h3>' +
+        '<p class="muted" style="margin:0;">You\'ll need the facilitator code and token shown when the cohort was created — this browser doesn\'t save them anywhere else.</p>' +
+        '<label class="field">Facilitator code<input type="text" id="fac-code-input" maxlength="7" style="text-transform:uppercase;font-family:var(--mono);" value="' + escapeHtml(FAC.reconnectDraft.code) + '" placeholder="F-ABCD1" /></label>' +
+        '<label class="field">Facilitator token<input type="text" id="fac-token-input" style="font-family:var(--mono);" value="' + escapeHtml(FAC.reconnectDraft.token) + '" /></label>' +
+        '<button class="btn" data-action="fac-reconnect" style="align-self:flex-start;"' + (FAC.busy ? " disabled" : "") + '>Reconnect →</button>' +
+        (last ? '<button class="btn btn-ghost btn-sm" data-action="fac-rejoin-last" style="align-self:flex-start;">Reconnect to last cohort (' + escapeHtml(last) + ') →</button>' : "") +
+      '</div>' +
+      '<div class="row" style="justify-content:flex-start;"><button class="btn btn-ghost" data-action="back-landing">← Back</button></div>' +
+    '</div>';
+  }
+
+  function facPhasePill(phase) {
+    var map = {
+      lobby: { cls: "pill-idle", label: "Lobby" },
+      briefing: { cls: "pill-warn", label: "Briefing" },
+      abatement: { cls: "pill-warn", label: "Abatement" },
+      trading: { cls: "pill-warn", label: "Trading" },
+      settlement: { cls: "pill-warn", label: "Settlement" },
+      summary: { cls: "pill-good", label: "Complete" }
+    };
+    var m = map[phase] || { cls: "pill-idle", label: phase || "—" };
+    return '<span class="pill ' + m.cls + '">' + m.label + '</span>';
+  }
+
+  function facRoomSubline(state) {
+    if (!state) return "Loading…";
+    var claimed = SECTORS.filter(function (s) { return state.seats[s.id].claimedBy; }).length;
+    var line = claimed + " of 9 seats claimed";
+    var subs = state.submissions || { abatement: {}, trading: {} };
+    if (state.phase === "abatement" || state.phase === "trading") {
+      var need = SECTORS.filter(function (s) { return state.seats[s.id].claimedBy; }).length;
+      var got = SECTORS.filter(function (s) {
+        if (!state.seats[s.id].claimedBy) return false;
+        return state.phase === "abatement" ? subs.abatement[s.id] != null : !!subs.trading[s.id];
+      }).length;
+      line += " · " + got + "/" + need + " submitted";
+    } else if (state.phase !== "lobby") {
+      line += " · Year " + state.year + " of " + TOTAL_YEARS;
+    }
+    return line;
+  }
+
+  function renderFacDashboard() {
+    var anyLobby = FAC.rooms.some(function (r) { return r.state && r.state.phase === "lobby"; });
+    var firstCbam = (FAC.rooms[0] && FAC.rooms[0].state && FAC.rooms[0].state.cbamConfig) || { enabled: false, article9Recognized: false };
+    return '<div class="wrap stack">' +
+      '<div class="eyebrow">Facilitator Dashboard</div>' +
+      '<h2>' + (FAC.label ? escapeHtml(FAC.label) : "Training Session") + '</h2>' +
+      facErrorBanner() +
+      '<div class="card stack">' +
+        '<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:0.75rem;">' +
+          '<div><div class="muted" style="font-size:12px;">Facilitator code</div><div class="code-display">' + FAC.code + '</div></div>' +
+          '<div><div class="muted" style="font-size:12px;">Facilitator token — save this to reconnect later</div><div style="font-family:var(--mono);font-size:13px;word-break:break-all;">' + escapeHtml(FAC.token || "") + '</div></div>' +
+        '</div>' +
+        '<p class="muted" style="margin:0;">Share each room\'s 4-letter code below with that breakout group — they join at the Live Multiplayer screen exactly as normal.</p>' +
+      '</div>' +
+      cbamSetupCard(firstCbam, "fac-cbam-toggle", "fac-cbam-article9-toggle") +
+      '<div class="row" style="justify-content:flex-end;gap:0.6rem;flex-wrap:wrap;">' +
+        (anyLobby ? '<button class="btn" data-action="fac-start-all"' + (FAC.busy ? " disabled" : "") + '>Start All Rooms →</button>' : "") +
+        '<button class="btn' + (anyLobby ? " btn-ghost" : "") + '" data-action="fac-advance-all"' + (FAC.busy ? " disabled" : "") + '>Advance All Rooms →</button>' +
+      '</div>' +
+      '<div class="stack" style="gap:0.6rem;">' +
+        FAC.rooms.map(function (r) {
+          var st = r.state;
+          return '<div class="card">' +
+            '<div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.6rem;">' +
+              '<div>' +
+                '<div style="font-family:var(--mono);font-size:1.1rem;font-weight:700;letter-spacing:0.05em;">' + r.code + '</div>' +
+                '<div class="muted" style="font-size:12.5px;">' + facRoomSubline(st) + '</div>' +
+              '</div>' +
+              '<div class="row" style="gap:0.6rem;align-items:center;">' +
+                facPhasePill(st ? st.phase : null) +
+                (st && st.phase !== "lobby" && st.phase !== "summary"
+                  ? '<button class="btn btn-sm btn-ghost" data-action="fac-advance-one" data-id="' + r.code + '"' + (FAC.busy ? " disabled" : "") + '>Advance →</button>'
+                  : "") +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }).join("") +
+      '</div>' +
+      '<div class="row" style="justify-content:flex-start;">' +
+        '<button class="btn btn-ghost" data-action="fac-leave">← Leave dashboard</button>' +
+      '</div>' +
+    '</div>';
   }
 
   /* ---------- events ---------- */
@@ -2011,6 +2445,10 @@
       if (!el) return;
       var action = el.getAttribute("data-action");
       if (action === "goto-setup") { G.screen = "setup"; render(); }
+      else if (action === "start-tutorial") { tutorialStart(); G.screen = "setup"; render(); }
+      else if (action === "dismiss-tutorial-offer") { tutorialStorageSet("cctsTutorialOffered", "1"); render(); }
+      else if (action === "tutorial-next") { tutorialAdvance(); render(); }
+      else if (action === "tutorial-skip") { tutorialEnd(); render(); }
       else if (action === "back-landing") { G.screen = "landing"; render(); }
       else if (action === "pick-sector") { G.draft.sectorId = el.getAttribute("data-id"); render(); }
       else if (action === "pick-archetype") { G.draft.archetypeId = el.getAttribute("data-id"); render(); }
@@ -2058,6 +2496,34 @@
       else if (action === "mp-submit-abatement") { mpSubmitAbatement(); }
       else if (action === "mp-submit-order") { mpSubmitOrder(); }
       else if (action === "mp-leave") { mpReset(); G.screen = "landing"; render(); }
+      else if (action === "goto-facilitator") { facReset(); G.screen = "facilitator"; render(); }
+      else if (action === "fac-create") {
+        var facLabelEl2 = document.getElementById("fac-label-input");
+        var facRoomCountEl2 = document.getElementById("fac-roomcount-input");
+        if (facLabelEl2) FAC.createDraft.label = facLabelEl2.value;
+        if (facRoomCountEl2) FAC.createDraft.roomCount = parseInt(facRoomCountEl2.value, 10) || 1;
+        facCreateCohort();
+      }
+      else if (action === "fac-reconnect") {
+        var facCodeEl2 = document.getElementById("fac-code-input");
+        var facTokenEl2 = document.getElementById("fac-token-input");
+        if (facCodeEl2) FAC.reconnectDraft.code = facCodeEl2.value;
+        if (facTokenEl2) FAC.reconnectDraft.token = facTokenEl2.value;
+        facReconnect();
+      }
+      else if (action === "fac-rejoin-last") { facRejoinLast(); }
+      else if (action === "fac-start-all") { facStartAll(); }
+      else if (action === "fac-advance-all") { facAdvanceAll(); }
+      else if (action === "fac-advance-one") { facAdvanceOne(el.getAttribute("data-id")); }
+      else if (action === "fac-cbam-toggle") {
+        var facCurCbam = (FAC.rooms[0] && FAC.rooms[0].state && FAC.rooms[0].state.cbamConfig) || { enabled: false, article9Recognized: false };
+        facSetCbamConfigAll(el.getAttribute("data-id") === "on", facCurCbam.article9Recognized);
+      }
+      else if (action === "fac-cbam-article9-toggle") {
+        var facCurCbam2 = (FAC.rooms[0] && FAC.rooms[0].state && FAC.rooms[0].state.cbamConfig) || { enabled: false, article9Recognized: false };
+        facSetCbamConfigAll(facCurCbam2.enabled, el.getAttribute("data-id") === "on");
+      }
+      else if (action === "fac-leave") { facReset(); G.screen = "landing"; render(); }
     };
     var slider = document.getElementById("abate-slider");
     if (slider) {
@@ -2207,6 +2673,15 @@
     var mpPriceEl = document.getElementById("mp-trade-price");
     if (mpQtyEl) mpQtyEl.oninput = function () { MP.tradeDraft.qty = parseFloat(mpQtyEl.value) || 0; };
     if (mpPriceEl) mpPriceEl.oninput = function () { MP.tradeDraft.limitPrice = parseFloat(mpPriceEl.value) || PRICE_FLOOR; };
+
+    var facLabelEl = document.getElementById("fac-label-input");
+    if (facLabelEl) facLabelEl.oninput = function () { FAC.createDraft.label = facLabelEl.value; };
+    var facRoomCountEl = document.getElementById("fac-roomcount-input");
+    if (facRoomCountEl) facRoomCountEl.oninput = function () { FAC.createDraft.roomCount = parseInt(facRoomCountEl.value, 10) || 1; };
+    var facCodeEl = document.getElementById("fac-code-input");
+    if (facCodeEl) facCodeEl.oninput = function () { FAC.reconnectDraft.code = facCodeEl.value.toUpperCase(); };
+    var facTokenEl = document.getElementById("fac-token-input");
+    if (facTokenEl) facTokenEl.oninput = function () { FAC.reconnectDraft.token = facTokenEl.value; };
   }
 
   render();

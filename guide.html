@@ -165,6 +165,7 @@
         <li><a href="#glossary">12. Glossary</a></li>
         <li><a href="#honesty">13. What's real vs. illustrative</a></li>
         <li><a href="#simulator">14. The Market Simulator mode</a></li>
+        <li><a href="#multiplayer">15. Live Multiplayer and the Facilitator Dashboard</a></li>
       </ol>
     </div>
 
@@ -182,6 +183,7 @@
       <li><strong>Play a full three-year compliance cycle</strong> — FY 2025-26, FY 2026-27, and FY 2027-28, each stricter than the last — with an abatement decision and a trading window every year.</li>
       <li><strong>See where you land</strong> on the nine-operator leaderboard, ranked by cumulative profit, alongside eight AI-driven counterparts.</li>
     </ol>
+    <p>First time here? The landing page offers a short guided tour — five dismissible tip cards that walk through registration, briefing, abatement, trading, and settlement on your first playthrough. You can replay it any time from the footnote link.</p>
 
     <h2 id="company">3. Your company</h2>
     <p>Every company has a <strong>baseline intensity</strong> (tCO2e per unit of output, fixed at FY2023-24 levels) and an annual <strong>output volume</strong>. Your starting posture shifts both your baseline and how expensive further cuts are:</p>
@@ -264,6 +266,7 @@
       <li>Your profit for the period is: production revenue (at full margin up to the year's demand ceiling, a discounted margin on anything sold past it — see section 5), minus this period's new abatement capex, minus net CCC spend (what you paid to buy, less what you earned selling), minus any penalty, minus any CBAM certificate and verification cost if that module is on (see section 6).</li>
     </ol>
     <p>Cumulative profit across all three years determines your rank on the nine-operator leaderboard at the end of the game.</p>
+    <p>The final results screen also includes a <strong>debrief</strong> comparing your actual cumulative profit to what a "Cost-Minimizing Complier" running the same sector would have made instead — the same baseline strategy described in section 10, replayed against the real market prices and demand scenarios you played through. It's an idealized comparison (full liquidity, no penalty, no banking friction assumed for the counterfactual), not a full re-simulation of the auction with everyone else's behavior changed too — but it's a useful gut check on whether your strategy actually beat the safe play, and by how much.</p>
 
     <h2 id="operators">10. The other eight operators</h2>
     <p>The eight AI-driven companies are drawn from four recurring strategies, so the market has real texture rather than one uniform opponent:</p>
@@ -378,6 +381,21 @@
     <div class="callout">
       <span class="c-label">This is a forecasting toy, not a market prediction</span>
       <p>The output is only as credible as the behavioral weights and cost curves you put in, and the cost curves are procedurally generated (see section 13). Use it to build intuition for how a behavioral mix shapes price and compliance outcomes, not as a prediction of what the real CCTS market will do.</p>
+    </div>
+
+    <h2 id="multiplayer">15. Live Multiplayer and the Facilitator Dashboard</h2>
+    <p><strong>Live Multiplayer</strong> plays out exactly like Solo vs. AI Operators, except real people claim the nine sector seats instead of AI archetypes filling all of them. One person creates a room and gets a 4-letter code; everyone else joins with that code, picks an unclaimed sector, and sets a starting posture. Any seat nobody claims is auto-filled by an AI operator when the host starts the game, so a room with three humans and six AI-filled seats plays the same as one with nine humans. Every phase — briefing, abatement, exchange, settlement — runs on the same server-authoritative logic as Solo, so all players see identical results: the same demand scenario, the same clearing price, the same settlement.</p>
+    <p>Only the host can start the game and advance phases; everyone else submits their own abatement plan, production level, and trading order, then waits. If the host advances before someone submits, that seat defaults to no new abatement and 100% production for the period — not an error, just the safe default.</p>
+    <h3>Running a training session with the Facilitator Dashboard</h3>
+    <p>For a workshop or course with several breakout groups playing at once, the <strong>Facilitator Dashboard</strong> — a small link on the Live Multiplayer entry screen — batches several ordinary rooms under one facilitator identity. Each room still works exactly as described above (each breakout group joins with its own 4-letter code, on the ordinary join screen), but the facilitator gets one screen to:</p>
+    <ul>
+      <li>See every room's current phase and how many seats are claimed, at a glance.</li>
+      <li>Set the CBAM module on or off for every room in the cohort at once, before any of them start.</li>
+      <li><strong>Start All Rooms</strong> once every group is ready, and <strong>Advance All Rooms</strong> to move every group through the compliance year together — or advance a single room on its own if one group needs more time.</li>
+    </ul>
+    <div class="callout">
+      <span class="c-label">Save the facilitator token</span>
+      <p>Creating a cohort gives you a facilitator code (<code>F-XXXXX</code>) and a facilitator token. The code alone is enough to view every room's status from any browser, but the token is required to start or advance rooms — it's shown once and isn't recoverable, so save it if you'll need to reconnect (a refreshed tab remembers it automatically; a different browser or device does not).</p>
     </div>
 
     <a class="btn" href="index.html">← Back to the simulator</a>

@@ -472,6 +472,71 @@ function resolveTrading(companies, abate, priceGuess, decideOrder, year, cbamCon
   return { orders: orders, auction: auction, settled: settled };
 }
 
+// ---------- debrief counterfactual ----------
+// For the post-game debrief: what a simple "Cost-Minimizing Complier"
+// strategy (the same botChooseAbatement logic real complier bots use)
+// would have produced for this exact company, against the same demand
+// scenarios that actually occurred. Deliberately does NOT re-run a
+// multi-agent auction — that would require guessing how every other
+// company's orders would have changed too. Instead it settles each year's
+// surplus/deficit against that year's REAL clearing price, assuming full
+// liquidity (always able to fully sell a surplus or buy a deficit at that
+// price, so no bank, no penalty). That's a clearly-scoped idealization —
+// an upper bound on how well "just comply, nothing fancier" could have
+// gone under the conditions that actually played out — not a full replay.
+function computeComplierCounterfactual(company, sector, yearScenarios, priceHistory) {
+  var cf = {
+    baselineIntensity: company.baselineIntensity,
+    measures: company.measures,
+    output: company.output,
+    margin: company.margin,
+    activatedCount: 0,
+    commitYear: [null, null, null, null],
+    strategy: "complier"
+  };
+  var records = [];
+  var cumulativeProfit = 0;
+  for (var year = 1; year <= TOTAL_YEARS; year++) {
+    var priceGuess = (year > 1 && priceHistory[year - 2]) ? priceHistory[year - 2].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+    var newCount = botChooseAbatement(cf, sector, year, priceGuess);
+    var capex = newMeasuresCost(cf, cf.activatedCount, newCount);
+    for (var i = cf.activatedCount; i < newCount; i++) cf.commitYear[i] = year;
+    cf.activatedCount = newCount;
+    var target = targetIntensity(cf, sector, year);
+    var effCount = effectiveCount(cf, year);
+    var actualIntensity = cf.baselineIntensity - cumulativeReduction(cf, effCount);
+
+    // Runs at 100% of fixed capacity every year — the "safe" baseline
+    // doesn't chase demand the way the real production decision could.
+    var actualOutput = cf.output;
+    var scenario = yearScenarios[year - 1];
+    var demandMult = scenario ? scenario.demand[sector.id] : 1;
+    var demandCeiling = cf.output * demandMult;
+    var sellableFull = Math.min(actualOutput, demandCeiling);
+    var excess = Math.max(0, actualOutput - sellableFull);
+    var revenue = cf.margin * sellableFull + cf.margin * 0.4 * excess;
+
+    var emissions = actualIntensity * actualOutput;
+    var allowance = target * actualOutput;
+    var surplusDeficit = allowance - emissions;
+
+    var clearingPrice = priceHistory[year - 1] ? priceHistory[year - 1].price : (PRICE_FLOOR + PRICE_CEIL) / 2;
+    var sold = Math.max(0, surplusDeficit);
+    var bought = Math.max(0, -surplusDeficit);
+    var netTrade = sold * clearingPrice - bought * clearingPrice;
+    var yearProfit = revenue - capex + netTrade;
+    cumulativeProfit += yearProfit;
+
+    records.push({
+      year: year, target: target, actual: actualIntensity, capex: capex,
+      actualOutput: actualOutput, revenue: revenue, surplusDeficit: surplusDeficit,
+      sold: sold, bought: bought, price: clearingPrice, committedCount: newCount,
+      yearProfit: yearProfit, cumulativeProfit: cumulativeProfit
+    });
+  }
+  return records;
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     SECTORS: SECTORS, DISCLOSED_SECTORS: DISCLOSED_SECTORS, ARCHETYPES: ARCHETYPES,
@@ -492,6 +557,7 @@ if (typeof module !== "undefined" && module.exports) {
     CBAM_OBLIGATION_FRACTION: CBAM_OBLIGATION_FRACTION, cbamObligationFraction: cbamObligationFraction,
     CBAM_EU_ETS_PRICE_BASE: CBAM_EU_ETS_PRICE_BASE, euEtsPrice: euEtsPrice,
     CBAM_DEFAULT_VALUE_MARKUP: CBAM_DEFAULT_VALUE_MARKUP, CBAM_VERIFICATION_COST: CBAM_VERIFICATION_COST,
-    botChooseCbam: botChooseCbam
+    botChooseCbam: botChooseCbam,
+    computeComplierCounterfactual: computeComplierCounterfactual
   };
 }
