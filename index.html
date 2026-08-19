@@ -368,6 +368,12 @@
   var num2 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
 
   function cr(v) { return "₹" + money.format(v / 1e7) + " Cr"; }
+  // Several sectors' real MACC data includes net cost-SAVING measures (an
+  // efficiency retrofit that pays for itself, say) — newMeasuresCost can
+  // come back negative. "₹-5.2 Cr" reads like a formatting bug; flip the
+  // sign and say "saved" instead, so a profitable abatement measure reads
+  // as the deliberate, real feature it is.
+  function capexLabel(v) { return v >= 0 ? cr(v) : cr(-v) + " saved"; }
   function rupee(v) { return "₹" + moneyInt.format(Math.round(v)); }
   function pct(v) { return num2.format(v) + "%"; }
   function fyLabel(year) { return "FY 20" + (24 + year) + "-" + (25 + year); }
@@ -1308,7 +1314,7 @@
           '<button class="btn btn-ghost" data-action="goto-mp">Host or Join a Room →</button>' +
         '</div>' +
       '</div>' +
-      '<p class="foot-note">Testing this build? See the <a href="test-guide.html" style="color:var(--accent);">Testing Guide</a> for a checklist across all three modes and how to report issues. An unofficial internal build for EDF (Environmental Defense Fund) testing — not a published EDF product. Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali and Pulp & Paper are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Company-level financials are illustrative.' +
+      '<p class="foot-note">Testing this build? See the <a href="test-guide.html" style="color:var(--accent);">Testing Guide</a> for a checklist across all three modes and how to report issues. An unofficial internal build for EDF (Environmental Defense Fund) testing — not a published EDF product. Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali, Pulp & Paper, and Iron & Steel are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Abatement cost curves for eight of the nine sectors are drawn from real government MACC studies; company-level financials otherwise are illustrative.' +
         (tutorialOffered() ? ' <button class="tt-skip" data-action="start-tutorial" style="font-size:11.5px;">Replay the guided tour →</button>' : '') +
       '</p>' +
     '</div>';
@@ -1326,7 +1332,7 @@
       html += '<button class="sector-tile' + (sel ? " selected" : "") + '" data-action="pick-sector" data-id="' + s.id + '">' +
         '<div class="st-name">' + s.name + '</div>' +
         '<div class="st-meta">Baseline ' + num2.format(s.baseline) + ' tCO2e/' + s.unit.replace("tonne ", "") + '</div>' +
-        '<div class="st-meta">FY26 −' + pct(s.fy26) + ' · FY27 −' + pct(s.fy27) + (disclosed ? "" : " (illustrative)") + '</div>' +
+        '<div class="st-meta">' + (s.fy26 > 0 ? "FY26 −" + pct(s.fy26) + " · " : "FY26 no target · ") + "FY27 −" + pct(s.fy27) + (disclosed ? "" : " (illustrative)") + '</div>' +
         '<div class="st-meta">FY28 −' + pct(s.fy28) + ' (extrapolated)</div>' +
       '</button>';
     });
@@ -1432,6 +1438,7 @@
             '<div class="kpi"><span class="kv">' + num2.format(target) + '</span><span class="kl">Target Intensity</span></div>' +
           '</div>' +
           '<p class="muted" style="margin:0;">Miss the target and you must surrender CCCs to cover the gap — from your bank first, then the exchange. Any shortfall left uncovered is penalized at 2× the prevailing market price. Beat the target and the surplus becomes CCCs you can sell or bank indefinitely.</p>' +
+          (reductionPct === 0 ? '<p class="muted" style="margin:0;">Your sector genuinely has no notified target for ' + yearLabel + ' — BEE\'s trajectory for it starts the following year. This isn\'t a placeholder; your target really does equal your baseline this period.</p>' : "") +
         '</div>' +
         renderScenarioCard(yd.scenario, p.sectorId) +
         '<div class="row" style="justify-content:flex-end;"><button class="btn" data-action="goto-abatement">Plan Abatement & Production →</button></div>' +
@@ -1507,7 +1514,7 @@
         '<div class="card stack" id="measure-list">' + measureRows(p, count, G.year) + '</div>' +
         '<input type="range" min="0" max="4" step="1" value="' + count + '" id="abate-slider" />' +
         '<div class="row" style="justify-content:space-between;">' +
-          '<div class="kpi"><span class="kv" id="abate-capex">' + cr(capex) + '</span><span class="kl">Capex This Period</span></div>' +
+          '<div class="kpi"><span class="kv" id="abate-capex">' + capexLabel(capex) + '</span><span class="kl">Capex This Period</span></div>' +
           '<div class="kpi"><span class="kv" id="abate-intensity" style="color:' + (actual <= target ? "var(--good)" : "var(--critical)") + '">' + num2.format(actual) + '</span><span class="kl">Resulting Intensity</span></div>' +
         '</div>' +
         cbamAbatementCard(p, sec, actual, prodStats.actualOutput, G.cbamDraft, G.year, G.cbamConfig, "cbam", priceGuess) +
@@ -1689,7 +1696,7 @@
             settleRow("Sold on exchange", moneyInt.format(Math.round(rec.sold)) + " tCO2e") +
             settleRow("Newly banked", moneyInt.format(Math.round(rec.bankedNow)) + " tCO2e") +
             settleRow("Penalty (2× price)", rec.penalty > 0.01 ? cr(rec.penalty) : "—") +
-            settleRow("Abatement capex", cr(rec.capex)) +
+            settleRow("Abatement capex", capexLabel(rec.capex)) +
             cbamSettleRows(rec.cbam) +
             settleRow("Net profit this period", cr(rec.yearProfit)) +
           '</tbody></table></div>' +
@@ -2138,7 +2145,9 @@
             '<div class="kpi-row">' +
               '<div class="kpi"><span class="kv">' + num2.format(mine.baselineIntensity) + '</span><span class="kl">FY23-24 Baseline</span></div>' +
               '<div class="kpi"><span class="kv">' + num2.format(targetIntensity(mine, sector, MP.state.year)) + '</span><span class="kl">Target Intensity</span></div>' +
-            '</div></div>'
+            '</div>' +
+            (targetIntensity(mine, sector, MP.state.year) === mine.baselineIntensity ? '<p class="muted" style="margin:0;">Your sector genuinely has no notified target this period — target equals baseline, not a placeholder.</p>' : "") +
+          '</div>'
           : '<div class="card"><p style="margin:0;">You\'re spectating this room — no seat claimed.</p></div>') +
         '<div class="row" style="justify-content:flex-end;">' + mpAdvanceControl("Open Abatement Window →") + '</div>' +
       '</div>' +
@@ -2206,7 +2215,7 @@
           : "") +
         '<input type="range" min="0" max="4" step="1" value="' + count + '" id="mp-abate-slider" />' +
         '<div class="row" style="justify-content:space-between;">' +
-          '<div class="kpi"><span class="kv" id="mp-abate-capex">' + cr(capex) + '</span><span class="kl">Capex This Period</span></div>' +
+          '<div class="kpi"><span class="kv" id="mp-abate-capex">' + capexLabel(capex) + '</span><span class="kl">Capex This Period</span></div>' +
           '<div class="kpi"><span class="kv" id="mp-abate-intensity" style="color:' + (actual <= target ? "var(--good)" : "var(--critical)") + '">' + num2.format(actual) + '</span><span class="kl">Resulting Intensity</span></div>' +
         '</div>' +
         cbamAbatementCard(mine, sector, actual, prodStats ? prodStats.actualOutput : mine.output, cbamDraft, MP.state.year, cbamCfg, "mp-cbam", mpPriceGuess) +
@@ -2536,7 +2545,7 @@
         var reduced = cumulativeReduction(p, effCount);
         var actual = p.baselineIntensity - reduced;
         var capex = newMeasuresCost(p, p.activatedCount, G.abateDraft);
-        document.getElementById("abate-capex").textContent = cr(capex);
+        document.getElementById("abate-capex").textContent = capexLabel(capex);
         var intensityEl = document.getElementById("abate-intensity");
         intensityEl.textContent = num2.format(actual);
         intensityEl.style.color = actual <= target ? "var(--good)" : "var(--critical)";
@@ -2627,7 +2636,7 @@
         var reduced = cumulativeReduction(mine, effCount);
         var actual = mine.baselineIntensity - reduced;
         var capex = newMeasuresCost(mine, mine.activatedCount, MP.abateDraft);
-        document.getElementById("mp-abate-capex").textContent = cr(capex);
+        document.getElementById("mp-abate-capex").textContent = capexLabel(capex);
         var intensityEl = document.getElementById("mp-abate-intensity");
         intensityEl.textContent = num2.format(actual);
         intensityEl.style.color = actual <= target ? "var(--good)" : "var(--critical)";

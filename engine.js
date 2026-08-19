@@ -8,19 +8,58 @@
 // FY25-26 and FY26-27 targets to date) — it's a linear extrapolation of each
 // sector's own fy26->fy27 trend, always flagged "(extrapolated)" in the UI
 // regardless of whether fy26/fy27 for that sector are real or illustrative.
+//
+// costTiers/fractionTiers replace the old universal MEASURE_COST_TIERS /
+// MEASURE_FRACTION_TIERS with a real, sector-specific marginal abatement
+// cost curve for the 8 sectors NSCICM/BEE has a technical-committee MACC
+// workbook for (every CCTS sector except Fertilizer). Each is 4 numbers:
+// sort every named real technology in that sector's workbook by INR/tCO2,
+// then cut the resulting cost curve into 4 equal-width blocks by
+// cumulative abatement potential (splitting a technology across a block
+// boundary when a single real lever — e.g. Chlor-Alkali's "26% RE
+// utilization" alone — is bigger than one block), and take each block's
+// potential-weighted average cost. That's why fractionTiers is the same
+// number four times per sector: by construction each block captures
+// exactly one quarter of that sector's total identified real potential;
+// what changes tier to tier is cost, which is the actual MACC shape (cheap
+// efficiency/O&M levers first — several sectors even open net-negative,
+// i.e. profitable — then progressively pricier capital projects).
+// baseline is that same workbook's real FY23-24 g CO2/kg figure (Fertilizer
+// has no workbook and keeps its earlier illustrative baseline). Source
+// files: MAC Aluminium/Alumina calculation Jan2025, MAC Cement_Calculation
+// 2409 (corrected), Chlor Alkali MAC calculations 31012025, Paper_MACC_R2,
+// Petrochemical/Refinery sector MAC calculations, Steel_MAC_after_TCM,
+// Textile_MACC_NSCICM — see guide.html Section 5 for the full citation.
 var SECTORS = [
-  { id: "aluminium", name: "Aluminium", unit: "tonne primary Al", baseline: 13.5, fy26: 1.9, fy27: 7.06, fy28: 12.22, margin: 2400, outMin: 40000, outMax: 90000 },
-  { id: "steel", name: "Iron & Steel", unit: "tonne crude steel", baseline: 2.3, fy26: 2.5, fy27: 6.0, fy28: 9.5, margin: 1800, outMin: 150000, outMax: 400000 },
-  { id: "cement", name: "Cement", unit: "tonne cement", baseline: 0.68, fy26: 0.85, fy27: 7.6, fy28: 14.35, margin: 900, outMin: 200000, outMax: 600000 },
-  { id: "chloralkali", name: "Chlor-Alkali", unit: "tonne caustic soda", baseline: 1.8, fy26: 1.32, fy27: 4.53, fy28: 7.74, margin: 1500, outMin: 60000, outMax: 150000 },
-  { id: "pulp", name: "Pulp & Paper", unit: "tonne paper", baseline: 1.2, fy26: 7.0, fy27: 15.0, fy28: 23.0, margin: 1100, outMin: 80000, outMax: 200000 },
-  { id: "fertilizer", name: "Fertilizer", unit: "tonne urea", baseline: 1.8, fy26: 2.0, fy27: 4.5, fy28: 7.0, margin: 1300, outMin: 250000, outMax: 500000 },
-  { id: "refining", name: "Petroleum Refining", unit: "tonne throughput", baseline: 0.28, fy26: 2.2, fy27: 5.0, fy28: 7.8, margin: 2000, outMin: 1000000, outMax: 3000000 },
-  { id: "petrochem", name: "Petrochemicals", unit: "tonne product", baseline: 1.0, fy26: 2.8, fy27: 5.5, fy28: 8.2, margin: 1700, outMin: 100000, outMax: 250000 },
-  { id: "textiles", name: "Textiles", unit: "tonne fabric", baseline: 0.15, fy26: 2.0, fy27: 3.5, fy28: 5.0, margin: 600, outMin: 50000, outMax: 120000 }
+  { id: "aluminium", name: "Aluminium", unit: "tonne primary Al", baseline: 16.432, fy26: 1.9, fy27: 7.06, fy28: 12.22, margin: 2400, outMin: 40000, outMax: 90000,
+    costTiers: [-298, 296, 1895, 3320], fractionTiers: [0.0367, 0.0367, 0.0367, 0.0367] },
+  { id: "steel", name: "Iron & Steel", unit: "tonne crude steel", baseline: 2.768, fy26: 0, fy27: 5.5, fy28: 11.0, margin: 1800, outMin: 150000, outMax: 400000,
+    costTiers: [-981, -477, 68, 1972], fractionTiers: [0.0563, 0.0563, 0.0563, 0.0563] },
+  { id: "cement", name: "Cement", unit: "tonne cement", baseline: 0.631, fy26: 0.85, fy27: 7.6, fy28: 14.35, margin: 900, outMin: 200000, outMax: 600000,
+    costTiers: [-1199, -297, 50, 1554], fractionTiers: [0.0208, 0.0208, 0.0208, 0.0208] },
+  { id: "chloralkali", name: "Chlor-Alkali", unit: "tonne caustic soda", baseline: 1.8797, fy26: 1.32, fy27: 4.53, fy28: 7.74, margin: 1500, outMin: 60000, outMax: 150000,
+    costTiers: [-785, -309, -129, 1189], fractionTiers: [0.0673, 0.0673, 0.0673, 0.0673] },
+  { id: "pulp", name: "Pulp & Paper", unit: "tonne paper", baseline: 1.230, fy26: 7.0, fy27: 15.0, fy28: 23.0, margin: 1100, outMin: 80000, outMax: 200000,
+    costTiers: [-4388, -423, 710, 2244], fractionTiers: [0.0551, 0.0551, 0.0551, 0.0551] },
+  { id: "fertilizer", name: "Fertilizer", unit: "tonne urea", baseline: 1.8, fy26: 2.0, fy27: 4.5, fy28: 7.0, margin: 1300, outMin: 250000, outMax: 500000,
+    costTiers: [400, 1200, 2800, 5500], fractionTiers: [0.02, 0.035, 0.05, 0.07] },
+  { id: "refining", name: "Petroleum Refining", unit: "tonne throughput", baseline: 0.217, fy26: 2.2, fy27: 5.0, fy28: 7.8, margin: 2000, outMin: 1000000, outMax: 3000000,
+    costTiers: [-7320, -4042, -1677, 432], fractionTiers: [0.0403, 0.0403, 0.0403, 0.0403] },
+  { id: "petrochem", name: "Petrochemicals", unit: "tonne product", baseline: 0.977, fy26: 2.8, fy27: 5.5, fy28: 8.2, margin: 1700, outMin: 100000, outMax: 250000,
+    costTiers: [-3704, -298, 1327, 1333], fractionTiers: [0.0361, 0.0361, 0.0361, 0.0361] },
+  { id: "textiles", name: "Textiles", unit: "tonne fabric", baseline: 2.097, fy26: 2.0, fy27: 3.5, fy28: 5.0, margin: 600, outMin: 50000, outMax: 120000,
+    costTiers: [-2415, -1242, 835, 1158], fractionTiers: [0.1271, 0.1271, 0.1271, 0.1271] }
 ];
 
-var DISCLOSED_SECTORS = { aluminium: 1, cement: 1, chloralkali: 1, pulp: 1 };
+// steel: every one of the ~255 entities in the Third Schedule (draft G.S.R.
+// 517(E), 26 June 2026) gets "-" for compliance year 2025-26 — that
+// schedule was only drafted after FY25-26 was already underway, so Iron &
+// Steel's real trajectory starts a year late (fy26: 0 above is a real "no
+// target," not a placeholder). fy27 (5.5%) is an equal-weighted average
+// over a ~26-entity sample of that schedule; real entity-level intensities
+// in it range from ~0.14 tCO2e/t (coated/finished products) to 4-8+
+// (ferro-alloys) around a baseline near the MACC workbook's own 2.768.
+var DISCLOSED_SECTORS = { aluminium: 1, cement: 1, chloralkali: 1, pulp: 1, steel: 1 };
 
 // The real CCTS notifies targets in 3-year blocks; this models one full
 // block (FY25-26, FY26-27, FY27-28) so banking has a real cycle to play out
@@ -89,8 +128,6 @@ var ARCHETYPES = [
 var BOT_STRATEGIES = ["complier", "banker", "frontloader", "laggard_payer"];
 var BOT_STRATEGY_LABEL = { complier: "Cost-Minimizing Complier", banker: "Banker / Speculator", frontloader: "Aggressive Early-Abater", laggard_payer: "Laggard Penalty-Payer" };
 
-var MEASURE_COST_TIERS = [400, 1200, 2800, 5500];
-var MEASURE_FRACTION_TIERS = [0.02, 0.035, 0.05, 0.07];
 var PRICE_FLOOR = 500;
 var PRICE_CEIL = 6000;
 
@@ -147,12 +184,24 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function sectorById(id) { return SECTORS.filter(function (s) { return s.id === id; })[0]; }
 function archetypeById(id) { return ARCHETYPES.filter(function (a) { return a.id === id; })[0]; }
 
-function makeMeasures(ownBaseline, archetype, variance) {
+function makeMeasures(ownBaseline, archetype, variance, sector) {
   variance = variance == null ? 0.1 : variance;
+  var costTiers = sector.costTiers, fractionTiers = sector.fractionTiers;
   var measures = [];
   for (var i = 0; i < 4; i++) {
-    var fraction = MEASURE_FRACTION_TIERS[i] * archetype.potentialMult * rnd(1 - variance, 1 + variance);
-    var costPerT = MEASURE_COST_TIERS[i] * archetype.costMult * rnd(1 - variance, 1 + variance);
+    var fraction = fractionTiers[i] * archetype.potentialMult * rnd(1 - variance, 1 + variance);
+    // costMult (>1 efficient, <1 laggard) is meant to always read as "worse
+    // for efficient, better for laggard" — true by plain multiplication
+    // when a tier costs money, but a real MACC tier can be net
+    // cost-SAVING (negative INR/tCO2): multiplying a negative number by
+    // 1.4 makes the saving *bigger*, i.e. better, which is backwards for
+    // "efficient incumbents get worse further-cut economics." Dividing
+    // instead for a negative base cost keeps the direction consistent
+    // (efficient: a smaller saving or a cost; laggard: a bigger saving)
+    // without changing anything for the (still purely positive) tiers this
+    // multiplier was originally written for.
+    var costBase = costTiers[i];
+    var costPerT = (costBase >= 0 ? costBase * archetype.costMult : costBase / archetype.costMult) * rnd(1 - variance, 1 + variance);
     var reductionPerUnit = fraction * ownBaseline;
     measures.push({
       label: ["Efficiency Retrofit", "Fuel/Process Switch", "Advanced Capture", "Deep Process Redesign"][i],
@@ -179,7 +228,7 @@ function generateCompany(sector, archetype, isPlayer, strategy, variance, idOver
     baselineIntensity: ownBaseline,
     output: output,
     margin: sector.margin,
-    measures: makeMeasures(ownBaseline, archetype, variance),
+    measures: makeMeasures(ownBaseline, archetype, variance, sector),
     activatedCount: 0,
     commitYear: [null, null, null, null],
     bank: 0,
