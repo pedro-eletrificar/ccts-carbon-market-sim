@@ -67,7 +67,7 @@ non-compliance penalty), the nine covered sectors, the FY2025-26/FY2026-27
 notified targets for Aluminium, Cement, Chlor-Alkali, Pulp & Paper and Iron &
 Steel (Iron & Steel has no FY2025-26 target at all), and — for every sector
 except Fertilizer — abatement cost curves and baseline intensities built from
-government technical-committee MACC workbooks.
+Government of India MACC calculation workbooks used in setting the targets.
 
 Illustrative: reduction targets for the other four sectors (interpolated
 within the disclosed envelope), every sector's FY2027-28 target (extrapolated),

@@ -11,8 +11,8 @@
 //
 // costTiers/fractionTiers replace the old universal MEASURE_COST_TIERS /
 // MEASURE_FRACTION_TIERS with a real, sector-specific marginal abatement
-// cost curve for the 8 sectors NSCICM/BEE has a technical-committee MACC
-// workbook for (every CCTS sector except Fertilizer). Each is 4 numbers:
+// cost curve for the 8 sectors the Government of India's MACC calculation
+// workbooks (used in setting the CCTS targets) cover — every sector but Fertilizer. Each is 4 numbers:
 // sort every named real technology in that sector's workbook by INR/tCO2,
 // then cut the resulting cost curve into 4 equal-width blocks by
 // cumulative abatement potential (splitting a technology across a block
@@ -29,7 +29,7 @@
 // files: MAC Aluminium/Alumina calculation Jan2025, MAC Cement_Calculation
 // 2409 (corrected), Chlor Alkali MAC calculations 31012025, Paper_MACC_R2,
 // Petrochemical/Refinery sector MAC calculations, Steel_MAC_after_TCM,
-// Textile_MACC_NSCICM — see guide.html Section 5 for the full citation.
+// Textile_MACC — see guide.html Section 7 / 13.
 var SECTORS = [
   { id: "aluminium", name: "Aluminium", unit: "tonne primary Al", baseline: 16.432, fy26: 1.9, fy27: 7.06, fy28: 12.22, margin: 2400, outMin: 40000, outMax: 90000,
     costTiers: [-298, 296, 1895, 3320], fractionTiers: [0.0367, 0.0367, 0.0367, 0.0367] },
