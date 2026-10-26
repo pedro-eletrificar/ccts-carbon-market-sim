@@ -1,48 +1,45 @@
 <meta charset="utf-8">
-<title>CCTS Carbon Market Simulator</title>
-<link rel="icon" type="image/png" href="edf-icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Libre+Franklin:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap" rel="stylesheet">
+<title>CCTS Carbon Market Simulator by Green Path</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%232d6a4f%27/%3E%3Cpath d=%27M8 22c6 0 10-4 10-10v-2c0 7 3 9 6 9-2 4-6 6-10 6z%27 fill=%27%23eaf3ee%27/%3E%3C/svg%3E">
 <style>
   :root {
     color-scheme: light;
-    --page: #f5f9ff;
+    --page: #f4f8f5;
     --surface: #ffffff;
-    --surface-2: #f1fbff;
-    --ink: #0a0e1a;
-    --ink-2: #3d4552;
-    --muted: #7a8699;
-    --grid: #dce7f5;
-    --baseline: #b9cbe8;
-    --border: rgba(0,51,204,0.14);
-    --accent: #0033cc;
+    --surface-2: #eaf3ee;
+    --ink: #0e1a14;
+    --ink-2: #3b4a42;
+    --muted: #6f8077;
+    --grid: #d7e5dc;
+    --baseline: #b5cdbf;
+    --border: rgba(31,90,64,0.16);
+    --accent: #2d6a4f;
     --accent-ink: #ffffff;
-    --price: #0033cc;
+    --price: #2d6a4f;
     --good: #0f9e7a;
     --warning: #b8790a;
     --serious: #c1552f;
     --critical: #d03b3b;
-    --mono: "Libre Franklin", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
-    --sans: "Libre Franklin", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
-    --display: "Libre Franklin", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
-    --headline: "Anton", "Arial Narrow", sans-serif;
+    --mono: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --sans: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --display: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --headline: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
       color-scheme: dark;
-      --page: #070b18;
-      --surface: #0f1830;
-      --surface-2: #16264d;
+      --page: #0b130f;
+      --surface: #131f19;
+      --surface-2: #1b2e25;
       --ink: #ffffff;
-      --ink-2: #c7d4ec;
-      --muted: #8fa0c2;
-      --grid: #223258;
-      --baseline: #2f4270;
+      --ink-2: #cddbd2;
+      --muted: #93a99b;
+      --grid: #26392f;
+      --baseline: #3a5446;
       --border: rgba(255,255,255,0.14);
-      --accent: #5c86ff;
-      --accent-ink: #071022;
-      --price: #5c86ff;
+      --accent: #6fcf9b;
+      --accent-ink: #07140d;
+      --price: #6fcf9b;
       --good: #34d6ac;
       --warning: #fab219;
       --serious: #ec835a;
@@ -51,18 +48,18 @@
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --page: #070b18;
-    --surface: #0f1830;
-    --surface-2: #16264d;
+    --page: #0b130f;
+    --surface: #131f19;
+    --surface-2: #1b2e25;
     --ink: #ffffff;
-    --ink-2: #c7d4ec;
-    --muted: #8fa0c2;
-    --grid: #223258;
-    --baseline: #2f4270;
+    --ink-2: #cddbd2;
+    --muted: #93a99b;
+    --grid: #26392f;
+    --baseline: #3a5446;
     --border: rgba(255,255,255,0.14);
-    --accent: #5c86ff;
-    --accent-ink: #071022;
-    --price: #5c86ff;
+    --accent: #6fcf9b;
+    --accent-ink: #07140d;
+    --price: #6fcf9b;
     --good: #34d6ac;
     --warning: #fab219;
     --serious: #ec835a;
@@ -70,18 +67,18 @@
   }
   :root[data-theme="light"] {
     color-scheme: light;
-    --page: #f5f9ff;
+    --page: #f4f8f5;
     --surface: #ffffff;
-    --surface-2: #f1fbff;
-    --ink: #0a0e1a;
-    --ink-2: #3d4552;
-    --muted: #7a8699;
-    --grid: #dce7f5;
-    --baseline: #b9cbe8;
-    --border: rgba(0,51,204,0.14);
-    --accent: #0033cc;
+    --surface-2: #eaf3ee;
+    --ink: #0e1a14;
+    --ink-2: #3b4a42;
+    --muted: #6f8077;
+    --grid: #d7e5dc;
+    --baseline: #b5cdbf;
+    --border: rgba(31,90,64,0.16);
+    --accent: #2d6a4f;
     --accent-ink: #ffffff;
-    --price: #0033cc;
+    --price: #2d6a4f;
     --good: #0f9e7a;
     --warning: #b8790a;
     --serious: #c1552f;
@@ -104,7 +101,6 @@
     padding: 0.6rem 1.25rem;
     background: var(--surface); border-bottom: 1px solid var(--border);
   }
-  .masthead .logo { height: 30px; width: auto; flex-shrink: 0; display: block; }
   .masthead .word { font-family: var(--display); font-weight: 800; font-size: 15px; color: var(--accent); white-space: nowrap; }
   .masthead .mdivider { width: 1px; height: 18px; background: var(--border); margin: 0 0.15rem; flex-shrink: 0; }
   .masthead .product { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -132,7 +128,7 @@
   .wrap-narrow { width: 100%; max-width: 720px; }
 
   h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0 0 0.4rem; letter-spacing: 0.01em; }
-  h1 { font-family: var(--headline); font-weight: 400; font-size: 2.85rem; line-height: 1.06; letter-spacing: -0.01em; }
+  h1 { font-family: var(--headline); font-weight: 800; font-size: 2.85rem; line-height: 1.06; letter-spacing: -0.01em; }
   h1 .hl { color: var(--accent); }
   h2 { font-size: 1.4rem; }
   h3 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); }
@@ -181,7 +177,7 @@
   }
   .mode-card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 14px 32px color-mix(in srgb, var(--accent) 16%, transparent); }
   .mode-card .mc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
-  .mode-card .mc-num { font-family: var(--headline); font-weight: 400; font-size: 1.9rem; line-height: 1; color: color-mix(in srgb, var(--accent) 45%, var(--muted) 55%); opacity: 0.5; }
+  .mode-card .mc-num { font-family: var(--headline); font-weight: 800; font-size: 1.9rem; line-height: 1; color: color-mix(in srgb, var(--accent) 45%, var(--muted) 55%); opacity: 0.5; }
   .mode-card h3 { margin: 0; text-transform: none; letter-spacing: 0; font-size: 1.15rem; color: var(--ink); font-weight: 800; }
   .mode-card p { margin: 0; flex: 1; font-size: 13.5px; }
   .mode-card .btn { align-self: flex-start; }
@@ -1234,10 +1230,9 @@
 
   function masthead() {
     return '<div class="masthead">' +
-      '<img class="logo" src="edf-icon.png" alt="" />' +
-      '<div class="word">Environmental Defense Fund</div>' +
+      '<div class="word">Green Path</div>' +
       '<div class="mdivider"></div>' +
-      '<div class="product">CCTS Carbon Market Simulator — internal testing build</div>' +
+      '<div class="product">CCTS Carbon Market Simulator</div>' +
     '</div>';
   }
 
@@ -1314,7 +1309,7 @@
           '<button class="btn btn-ghost" data-action="goto-mp">Host or Join a Room →</button>' +
         '</div>' +
       '</div>' +
-      '<p class="foot-note">Testing this build? See the <a href="test-guide.html" style="color:var(--accent);">Testing Guide</a> for a checklist across all three modes and how to report issues. An unofficial internal build for EDF (Environmental Defense Fund) testing — not a published EDF product. Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali, Pulp & Paper, and Iron & Steel are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Abatement cost curves for eight of the nine sectors are drawn from real government MACC studies; company-level financials otherwise are illustrative.' +
+      '<p class="foot-note">Testing this build? See the <a href="test-guide.html" style="color:var(--accent);">Testing Guide</a> for a checklist across all three modes and how to report issues. Modeled on the CCTS as notified through February 2026: an intensity-based baseline-and-credit system across 9 sectors, unlimited banking, no borrowing, and a 2× market-price penalty for uncovered shortfalls. Sector reduction ranges for Aluminium, Cement, Chlor-Alkali, Pulp & Paper, and Iron & Steel are drawn from disclosed targets; other sectors’ ranges are illustrative, interpolated within the disclosed FY25-26/FY26-27 envelope. Abatement cost curves for eight of the nine sectors are drawn from real government MACC studies; company-level financials otherwise are illustrative. © Green Path.' +
         (tutorialOffered() ? ' <button class="tt-skip" data-action="start-tutorial" style="font-size:11.5px;">Replay the guided tour →</button>' : '') +
       '</p>' +
     '</div>';
@@ -2354,7 +2349,7 @@
       facErrorBanner() +
       '<div class="card stack">' +
         '<h3 style="margin:0;">Create a new cohort</h3>' +
-        '<label class="field">Session label (optional)<input type="text" id="fac-label-input" maxlength="80" value="' + escapeHtml(FAC.createDraft.label) + '" placeholder="e.g. CII Steel Sector Workshop" /></label>' +
+        '<label class="field">Session label (optional)<input type="text" id="fac-label-input" maxlength="80" value="' + escapeHtml(FAC.createDraft.label) + '" placeholder="e.g. Steel Sector Workshop" /></label>' +
         '<label class="field">Number of rooms (1–12)<input type="number" id="fac-roomcount-input" min="1" max="12" value="' + FAC.createDraft.roomCount + '" style="max-width:100px;" /></label>' +
         '<button class="btn" data-action="fac-create" style="align-self:flex-start;"' + (FAC.busy ? " disabled" : "") + '>Create Cohort →</button>' +
       '</div>' +

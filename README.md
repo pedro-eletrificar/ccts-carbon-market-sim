@@ -1,13 +1,13 @@
-# CCTS Carbon Market Simulator
+# CCTS Carbon Market Simulator by Green Path
 
-An unofficial internal build for EDF (Environmental Defense Fund) testing — a
+A Green Path product for training bodies and their members — a
 browser-based simulation of India's Carbon Credit Trading Scheme (CCTS), the
 intensity-based baseline-and-credit carbon market notified under the Energy
-Conservation (Amendment) Act, 2022. Not a published EDF product.
+Conservation (Amendment) Act, 2022.
 
 Three modes:
 - **Solo vs. AI Operators** — register a company in one of the nine
-  CCTS-obligated sectors, run it through the FY 2025-26 and FY 2026-27
+  CCTS-obligated sectors, run it through the three FY 2025-26 to FY 2027-28
   compliance years, and trade Carbon Credit Certificates (CCCs) against eight
   AI-driven counterparts on a live exchange.
 - **Market Simulator** — configure a behavioral mix (firm population,
@@ -61,13 +61,15 @@ test against the live deployment).
 
 ## What's real vs. illustrative
 
-Grounded in CCTS as notified through February 2026: the mechanism design
+Grounded in CCTS as notified through June 2026: the mechanism design
 (intensity-based baseline-and-credit, unlimited banking, no borrowing, 2×
 non-compliance penalty), the nine covered sectors, the FY2025-26/FY2026-27
-compliance period, and the disclosed reduction ranges for Aluminium, Cement,
-Chlor-Alkali, and Pulp & Paper.
+notified targets for Aluminium, Cement, Chlor-Alkali, Pulp & Paper and Iron &
+Steel (Iron & Steel has no FY2025-26 target at all), and — for every sector
+except Fertilizer — abatement cost curves and baseline intensities built from
+government technical-committee MACC workbooks.
 
-Illustrative: reduction targets for the other five sectors (interpolated
-within the disclosed envelope), all company-level financials and abatement
-cost curves (procedurally generated for gameplay balance), and the price
+Illustrative: reduction targets for the other four sectors (interpolated
+within the disclosed envelope), every sector's FY2027-28 target (extrapolated),
+Fertilizer's cost curve, company-level financials, lead times, and the price
 collar bounds. Full detail in [`guide.html`](./guide.html#honesty).
